@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reisetracker</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <main id="app">
+    <section id="passwort-schirm">
+      <p class="marke">Reisetracker</p>
+      <h1>Wo seid ihr gerade?</h1>
+      <p class="einleitung">Die Reise liegt verschlüsselt auf dieser Seite. Zum Ansehen braucht es das Familien-Passwort.</p>
+      <form id="passwort-formular">
+        <label for="passwort">Familien-Passwort eingeben</label>
+        <input id="passwort" name="passwort" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+        <p id="passwort-fehler" class="fehler" role="alert" hidden></p>
+        <button class="primaer" type="submit">Los geht's</button>
+      </form>
+    </section>
+
+    <section id="status-schirm" hidden>
+      <p id="testzeit" class="testzeit" hidden>Testzeit</p>
+      <p class="marke">Reisetracker</p>
+      <h1 id="reise-titel"></h1>
+      <p id="reise-untertitel" hidden></p>
+      <div id="status-text"></div>
+      <p id="merken-hinweis" class="hinweis" hidden>Auf diesem Gerät kann ich mir den Schlüssel nicht merken. Beim nächsten Besuch bitte das Passwort neu eingeben.</p>
+      <button id="abmelden" class="leise" type="button">Abmelden</button>
+    </section>
+  </main>
+  <noscript>
+    <p>Bitte JavaScript einschalten, sonst kann die Seite nichts anzeigen.</p>
+  </noscript>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+/* Hochformat zuerst, große Schrift, hoher Kontrast. */
+
+html {
+  color-scheme: light;
+  -webkit-text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  font-size: 20px;
+  line-height: 1.45;
+  color: #1a1208;
+  background: #fff8ee;
+}
+
+main {
+  min-height: 100dvh;
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+h1 {
+  margin: 0.2rem 0 0.8rem;
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0 0 0.9rem;
+}
+
+.einleitung {
+  margin-bottom: 1.2rem;
+}
+
+.marke {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-weight: 700;
+}
+
+input {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.8rem;
+  font: inherit;
+  font-size: 1.15em;
+  color: #1a1208;
+  background: #ffffff;
+  border: 3px solid #1a1208;
+  border-radius: 0.6rem;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
+
+.primaer {
+  width: 100%;
+  min-height: 3.4rem;
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: #0c3b6e;
+  border: 3px solid #0c3b6e;
+  border-radius: 0.7rem;
+}
+
+.leise {
+  margin-top: auto;
+  align-self: center;
+  min-height: 2.8rem;
+  padding: 0.35rem 1rem;
+  font-size: 18px;
+  color: #1a1208;
+  background: transparent;
+  border: 2px solid #1a1208;
+  border-radius: 0.6rem;
+}
+
+:focus-visible {
+  outline: 3px solid #0c3b6e;
+  outline-offset: 3px;
+}
+
+.fehler {
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.8rem;
+  font-weight: 700;
+  color: #6d1010;
+  background: #ffd9d4;
+  border: 2px solid #6d1010;
+  border-radius: 0.5rem;
+}
+
+.testzeit {
+  display: inline-block;
+  margin: 0 0 0.8rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1208;
+  background: #ffe14a;
+  border-radius: 0.4rem;
+}
+
+#status-schirm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+#status-text p:first-child {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.hinweis {
+  margin-top: 0.6rem;
+  font-size: 18px;
+}
+
+@media (min-width: 700px) {
+  main {
+    padding: 2rem 1.5rem 2rem;
+  }
+}

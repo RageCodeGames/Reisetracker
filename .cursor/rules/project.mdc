@@ -1,0 +1,18 @@
+---
+description: Projektregeln für den Reisetracker
+alwaysApply: true
+---
+
+# Reisetracker
+
+- Reines HTML, CSS und JavaScript als ES-Module. Kein Build-Schritt, kein npm im Projekt, kein Framework. Läuft direkt auf GitHub Pages.
+- Externe Bibliotheken nur von `cdn.jsdelivr.net` mit exakter Versionsnummer: d3-geo, d3-zoom, d3-selection, topojson-client, world-atlas.
+- Alle Pfade relativ (`./index.html`, `./daten/...`), weil die Seite unter `/reisetracker/` liegt. Gilt auch für `manifest.json` und `sw.js`.
+- Datenschutz: Das Repo ist öffentlich. Reisedaten niemals unverschlüsselt ins Repo. Klartext nur in `privat/` (wird nicht hochgeladen). Die App liest nur verschlüsselte Dateien aus `daten/`. Dateien in `privat/` niemals verändern, verschieben oder kopieren.
+- Zielgruppe: ältere Menschen am Handy. Schrift mindestens 18px, hoher Kontrast, alles auf Deutsch, Hochformat zuerst.
+- Kommentare auf Deutsch.
+- Vor Änderungen die betroffenen Dateien lesen. Nach jedem Schritt anhalten, geänderte Dateien auflisten und auf „weiter“ warten.
+
+```html
+<script type="module" src="./js/app.js"></script>
+```
