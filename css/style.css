@@ -213,7 +213,196 @@ button:disabled {
 }
 
 #karte {
+  position: relative;
   min-height: 18rem;
+}
+
+.gruss-blase {
+  position: absolute;
+  z-index: 3;
+  max-width: min(17.5rem, 88%);
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, calc(-100% - 12px));
+  text-align: left;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1.3;
+  color: #1a1208;
+  background: #fffdf8;
+  border: 3px solid #1a1208;
+  border-radius: 1.15rem;
+  box-shadow: 4px 4px 0 #1a1208;
+}
+
+.gruss-blase::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  width: 16px;
+  height: 16px;
+  background: #fffdf8;
+  border-right: 3px solid #1a1208;
+  border-bottom: 3px solid #1a1208;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.gruss-blase-unten {
+  transform: translate(-50%, 12px);
+}
+
+.gruss-blase-unten::after {
+  top: -11px;
+  bottom: auto;
+  transform: translateX(-50%) rotate(225deg);
+}
+
+.gruss-blase-klein {
+  max-width: none;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.gruss-blase-klein::after {
+  display: none;
+}
+
+.gruss-blase-inhalt {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 2.1rem 0.65rem 0.7rem;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.gruss-blase-zu {
+  position: absolute;
+  top: 0.2rem;
+  right: 0.2rem;
+  z-index: 2;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: #1a1208;
+  background: #ffe9a0;
+  border: 2px solid #1a1208;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gruss-blase-mini {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.1rem;
+  height: 2.8rem;
+  padding: 0.2rem;
+  font: inherit;
+  color: #1a1208;
+  background: #fffdf8;
+  border: 3px solid #1a1208;
+  border-radius: 999px;
+  box-shadow: 3px 3px 0 #1a1208;
+  cursor: pointer;
+}
+
+.gruss-blase-mini .neu-punkt {
+  top: -0.45rem;
+  right: -0.55rem;
+}
+
+.gruss-blase-kopf,
+.gruss-blase-text {
+  margin: 0 0 0.3rem;
+}
+
+.gruss-blase-kopf {
+  font-weight: 700;
+}
+
+.gruss-blase-text {
+  max-height: 4.2em;
+  margin-bottom: 0.4rem;
+  overflow: hidden;
+}
+
+.gruss-blase-fotos {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+
+.gruss-blase-foto {
+  display: block;
+  flex: 0 0 auto;
+  width: 3.4rem;
+  height: 3.4rem;
+  object-fit: cover;
+  border: 2px solid #1a1208;
+  border-radius: 0.35rem;
+  background: #ebe3d2;
+}
+
+.gruss-blase-mehr {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  font-weight: 700;
+  background: #ffe9a0;
+  border: 2px solid #1a1208;
+  border-radius: 0.35rem;
+}
+
+.neu-punkt {
+  position: absolute;
+  top: -0.55rem;
+  right: -0.45rem;
+  z-index: 1;
+  padding: 0.08rem 0.4rem;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #fffdf8;
+  background: #d21f1f;
+  border: 2px solid #1a1208;
+  border-radius: 999px;
+}
+
+.polaroid-rahmen {
+  fill: #fffdf8;
+  stroke: #1a1208;
+  stroke-width: 2;
+}
+
+.polaroid-blase {
+  fill: #fffdf8;
+  stroke: #1a1208;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.polaroid-neu {
+  fill: #d21f1f;
+  stroke: #fffdf8;
+  stroke-width: 1.5;
 }
 
 .karte-fehler {
@@ -467,6 +656,54 @@ button:disabled {
   white-space: nowrap;
 }
 
+.gruss-galerie {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  margin: 0.55rem 0 0;
+  padding: 0.35rem 0.15rem 0.45rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.gruss-kachel {
+  position: relative;
+  flex: 0 0 auto;
+  width: 4.8rem;
+  height: 4.8rem;
+  padding: 0;
+  overflow: visible;
+  font: inherit;
+  color: #1a1208;
+  background: #fff8ee;
+  border: 3px solid #1a1208;
+  border-radius: 0.65rem;
+  cursor: pointer;
+}
+
+.gruss-kachel img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0.42rem;
+}
+
+.gruss-kachel-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gruss-kachel-label {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.gruss-kachel .neu-punkt {
+  top: 0.15rem;
+  right: 0.15rem;
+}
+
 .reise-links {
   display: flex;
   flex-direction: column;
@@ -581,6 +818,78 @@ button:disabled {
 
 .ort-popup-info {
   margin-bottom: 0;
+}
+
+.gruss-vollbild {
+  flex-direction: column;
+  width: min(36rem, 100vw);
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+  padding: 0.85rem 0.85rem 1.1rem;
+  border: none;
+  background: #1a1208;
+  color: #fffdf8;
+}
+
+.gruss-vollbild:not([open]) {
+  display: none !important;
+}
+
+.gruss-vollbild[open] {
+  display: flex;
+}
+
+.gruss-vollbild::backdrop {
+  background: #1a1208;
+}
+
+.gruss-vollbild-foto-wrap {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 16rem;
+  max-height: calc(100dvh - 14rem);
+  margin-bottom: 0.7rem;
+  background: #2a2014;
+  border-radius: 0.9rem;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.gruss-vollbild-foto-wrap img {
+  display: block;
+  width: 100%;
+  max-height: calc(100dvh - 14rem);
+  object-fit: contain;
+  touch-action: none;
+}
+
+.gruss-vollbild-ohne-foto {
+  margin: 0;
+  padding: 2rem 1rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.gruss-vollbild-text {
+  margin: 0 0 0.4rem;
+  font-size: 1.2rem;
+}
+
+.gruss-vollbild-zeit {
+  margin: 0 0 0.85rem;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.gruss-vollbild .primaer {
+  min-height: 3.6rem;
+  font-size: 1.2rem;
+  color: #1a1208;
+  background: #ffe9a0;
 }
 
 .hinweis {
@@ -703,6 +1012,14 @@ textarea {
   background: #fff8e0;
   border: 3px solid #1a1208;
   border-radius: 0.7rem;
+}
+
+.warte-liste {
+  margin-bottom: 0.55rem;
+}
+
+.warte-karte {
+  background: #fff8e0;
 }
 
 #jetzt-senden {

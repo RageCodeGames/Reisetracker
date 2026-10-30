@@ -1,6 +1,7 @@
 {
   "name": "Wo sind wir gerade?",
   "short_name": "Reisetracker",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

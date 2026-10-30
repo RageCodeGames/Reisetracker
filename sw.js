@@ -1,11 +1,14 @@
 /**
  * Service Worker: App, Bibliotheken und Weltkarte liegen im Cache.
  * config.json und daten/ kommen zuerst aus dem Netz, sonst aus dem Cache.
+ * Fotos (fotos/*.bin) liegen im Cache zuerst, Dateinamen ändern sich nie.
+ * Die Upload-Seite hat einen eigenen Cache reisetracker-admin.
  * CACHE_VERSION hochzählen, wenn sich App-Dateien ändern.
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME = `reisetracker-${CACHE_VERSION}`;
+const CACHE_ADMIN = 'reisetracker-admin';
 
 const APP_DATEIEN = [
   './',
@@ -15,6 +18,7 @@ const APP_DATEIEN = [
   './js/crypto.js',
   './js/trip.js',
   './js/map.js',
+  './js/updates.js',
   './manifest.json',
   './icons/icon.svg',
   './icons/schiff.svg',
@@ -22,6 +26,12 @@ const APP_DATEIEN = [
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',
   './icons/apple-touch-icon.png',
+];
+
+const ADMIN_DATEIEN = [
+  './admin.html',
+  './js/admin.js',
+  './admin-manifest.json',
 ];
 
 const CDN_DATEIEN = [
@@ -39,6 +49,8 @@ self.addEventListener('install', (ereignis) => {
     const cache = await caches.open(CACHE_NAME);
     await cache.addAll(APP_DATEIEN);
     await cdnMitAbhaengigkeiten(cache, CDN_DATEIEN);
+    const adminCache = await caches.open(CACHE_ADMIN);
+    await adminCache.addAll(ADMIN_DATEIEN);
     await self.skipWaiting();
   })());
 });
@@ -48,7 +60,7 @@ self.addEventListener('activate', (ereignis) => {
     const namen = await caches.keys();
     await Promise.all(
       namen
-        .filter((name) => name.startsWith('reisetracker-') && name !== CACHE_NAME)
+        .filter((name) => name.startsWith('reisetracker-') && name !== CACHE_NAME && name !== CACHE_ADMIN)
         .map((name) => caches.delete(name)),
     );
     await self.clients.claim();
@@ -61,10 +73,18 @@ self.addEventListener('fetch', (ereignis) => {
 
   const url = new URL(anfrage.url);
   if (url.origin === self.location.origin && url.pathname.endsWith('/sw.js')) return;
-  // Upload-Seite gehört nicht in den Eltern-Cache.
-  if (istAdminDatei(url)) return;
   // GitHub-API nicht cachen, sonst wären Grüße veraltet.
   if (url.origin !== self.location.origin && url.hostname !== 'cdn.jsdelivr.net') return;
+
+  if (istAdminDatei(url)) {
+    ereignis.respondWith(cacheZuerstIn(anfrage, CACHE_ADMIN));
+    return;
+  }
+
+  if (istFotoBin(url)) {
+    ereignis.respondWith(cacheZuerst(anfrage));
+    return;
+  }
 
   if (istNetzwerkZuerst(url)) {
     ereignis.respondWith(netzwerkZuerst(anfrage));
@@ -79,6 +99,11 @@ function istAdminDatei(url) {
   return url.pathname.endsWith('/admin.html')
     || url.pathname.endsWith('/js/admin.js')
     || url.pathname.endsWith('/admin-manifest.json');
+}
+
+function istFotoBin(url) {
+  if (url.origin !== self.location.origin) return false;
+  return url.pathname.includes('/fotos/') && url.pathname.endsWith('.bin');
 }
 
 function istNetzwerkZuerst(url) {
@@ -100,7 +125,11 @@ async function netzwerkZuerst(anfrage) {
 }
 
 async function cacheZuerst(anfrage) {
-  const cache = await caches.open(CACHE_NAME);
+  return cacheZuerstIn(anfrage, CACHE_NAME);
+}
+
+async function cacheZuerstIn(anfrage, cacheName) {
+  const cache = await caches.open(cacheName);
   const gespeichert = await cache.match(anfrage, { ignoreSearch: true });
   if (gespeichert) return gespeichert;
   const antwort = await fetch(anfrage);

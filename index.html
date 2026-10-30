@@ -49,7 +49,9 @@
         </div>
       </div>
 
+      <section id="vor-reise" class="tage" aria-label="Vor der Reise" hidden></section>
       <section id="tage" class="tage" aria-label="Tagesübersicht"></section>
+      <section id="nach-reise" class="tage" aria-label="Nach der Reise" hidden></section>
 
       <nav id="reise-links" class="reise-links" aria-label="Links zur Reise" hidden></nav>
 
@@ -70,6 +72,16 @@
         <p id="ort-popup-zeiten" class="ort-popup-zeiten" hidden></p>
         <p id="ort-popup-info" class="ort-popup-info" hidden></p>
       </form>
+    </dialog>
+
+    <dialog id="gruss-vollbild" class="gruss-vollbild" aria-label="Gruß">
+      <div class="gruss-vollbild-foto-wrap">
+        <img id="gruss-vollbild-foto" alt="">
+        <p id="gruss-vollbild-ohne-foto" class="gruss-vollbild-ohne-foto" hidden>Kein Foto</p>
+      </div>
+      <p id="gruss-vollbild-text" class="gruss-vollbild-text"></p>
+      <p id="gruss-vollbild-zeit" class="gruss-vollbild-zeit"></p>
+      <button id="gruss-vollbild-schliessen" class="primaer" type="button">Schließen</button>
     </dialog>
   </main>
   <noscript>

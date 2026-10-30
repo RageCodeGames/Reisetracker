@@ -20,8 +20,21 @@ import {
   uhrzeitLang,
   zeitAusAdresse,
 } from './trip.js';
+import {
+  fotoUrl,
+  fotoUrlsFreigeben,
+  grossPfad,
+  kleinPfad,
+  lazyBild,
+  neuesterGruss,
+  updatesLaden,
+  updatesNachZeitraum,
+  vorRelativ,
+} from './updates.js';
 
 const SPEICHER = 'reisetracker.schluessel';
+const SPEICHER_GESEHEN = 'reisetracker.gesehen';
+const UPDATES_INTERVALL_MS = 5 * 60 * 1000;
 
 const passwortSchirm = document.querySelector('#passwort-schirm');
 const statusSchirm = document.querySelector('#status-schirm');
@@ -41,7 +54,9 @@ const karteRahmen = document.querySelector('#karte');
 const karteFehler = document.querySelector('#karte-fehler');
 const ganzeReiseKnopf = document.querySelector('#ganze-reise');
 const woKnopf = document.querySelector('#wo-sind-wir');
+const vorReise = document.querySelector('#vor-reise');
 const tageListe = document.querySelector('#tage');
+const nachReise = document.querySelector('#nach-reise');
 const reiseLinks = document.querySelector('#reise-links');
 const andereReisen = document.querySelector('#andere-reisen');
 const reiseListe = document.querySelector('#reise-liste');
@@ -52,6 +67,12 @@ const ortZeiten = document.querySelector('#ort-popup-zeiten');
 const ortInfo = document.querySelector('#ort-popup-info');
 const merkenHinweis = document.querySelector('#merken-hinweis');
 const abmeldenKnopf = document.querySelector('#abmelden');
+const vollbild = document.querySelector('#gruss-vollbild');
+const vollbildFoto = document.querySelector('#gruss-vollbild-foto');
+const vollbildOhneFoto = document.querySelector('#gruss-vollbild-ohne-foto');
+const vollbildText = document.querySelector('#gruss-vollbild-text');
+const vollbildZeit = document.querySelector('#gruss-vollbild-zeit');
+const vollbildSchliessen = document.querySelector('#gruss-vollbild-schliessen');
 
 let konfig = null;
 let schluessel = null;
@@ -63,6 +84,13 @@ let karte = null;
 let karteLaeuft = false;
 let tageGescrolltFuer = null;
 let serviceWorkerNeu = false;
+let updates = [];
+let neuIds = new Set();
+let gesehenBeimStart = new Set();
+let updatesTimer = null;
+let vollbildSlides = [];
+let vollbildIndex = 0;
+let wischX = null;
 
 ganzeReiseKnopf.addEventListener('click', () => karte?.ganzeReise());
 woKnopf.addEventListener('click', () => karte?.woSindWir());
@@ -91,6 +119,24 @@ formular.addEventListener('submit', async (ereignis) => {
 });
 
 abmeldenKnopf.addEventListener('click', abmelden);
+vollbildSchliessen.addEventListener('click', vollbildSchliessenJetzt);
+const vollbildFotoWrap = document.querySelector('.gruss-vollbild-foto-wrap');
+vollbildFotoWrap.addEventListener('pointerdown', (ereignis) => {
+  if (ereignis.pointerType === 'mouse' && ereignis.button !== 0) return;
+  wischX = ereignis.clientX;
+});
+vollbildFotoWrap.addEventListener('pointerup', (ereignis) => {
+  if (wischX == null) return;
+  const delta = ereignis.clientX - wischX;
+  wischX = null;
+  if (delta > 60) vollbildSchritt(-1);
+  else if (delta < -60) vollbildSchritt(1);
+});
+vollbildFotoWrap.addEventListener('pointercancel', () => { wischX = null; });
+window.addEventListener('pagehide', gesehenSchreiben);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') gesehenSchreiben();
+});
 
 reiseListe.addEventListener('click', async (ereignis) => {
   const knopfReise = ereignis.target.closest('button[data-id]');
@@ -178,8 +224,13 @@ async function tripLaden(key, id) {
     if (istPasswortFalsch(problem)) throw problem;
     throw new Error('daten');
   }
+  fotoUrlsFreigeben();
+  updates = [];
+  neuIds = new Set();
   gewaehlteId = eintrag.id;
   zustand = { eintrag, trip };
+  gesehenBeimStart = gesehenLesen(eintrag.id);
+  await updatesAktualisieren();
 }
 
 function zeigeStatus() {
@@ -188,6 +239,11 @@ function zeigeStatus() {
   zeichne();
   if (timer) clearInterval(timer);
   timer = setInterval(zeichne, 60000);
+  if (updatesTimer) clearInterval(updatesTimer);
+  updatesTimer = setInterval(async () => {
+    await updatesAktualisieren();
+    if (!statusSchirm.hidden) zeichne();
+  }, UPDATES_INTERVALL_MS);
 }
 
 async function zeichne() {
@@ -233,7 +289,10 @@ async function zeichne() {
     reiseBalken.hidden = true;
   }
 
-  tageZeichnen(tagesUebersicht(zustand.trip, zustand.eintrag, zeit));
+  const gruppiert = updatesNachZeitraum(updates, zustand.eintrag, zone);
+  tageZeichnen(tagesUebersicht(zustand.trip, zustand.eintrag, zeit), gruppiert.nachTag);
+  extraZeitraumZeichnen(vorReise, 'Vor der Reise', gruppiert.vor);
+  extraZeitraumZeichnen(nachReise, 'Nach der Reise', gruppiert.nach);
   linksZeichnen(zustand.trip.links);
   reisenZeichnen();
 
@@ -244,10 +303,11 @@ async function zeichne() {
       const modul = await import('./map.js');
       karte = await modul.karteErstellen(karteRahmen);
       karte.setzeOrtKlick((ort) => ortPopupZeigen(ort));
+      karte.setzeGrussKlick((gruss) => vollbildOeffnen(gruss, updates));
       karteLaeuft = false;
     }
     karteFehler.hidden = true;
-    karte.aktualisieren(zustand.trip, status, zeit);
+    karte.aktualisieren(zustand.trip, status, zeit, gruessePaket());
   } catch {
     karteLaeuft = false;
     karte = null;
@@ -255,7 +315,7 @@ async function zeichne() {
   }
 }
 
-function tageZeichnen(tage) {
+function tageZeichnen(tage, nachTag) {
   tageListe.replaceChildren();
   let heuteKarte = null;
   for (const tag of tage) {
@@ -294,6 +354,8 @@ function tageZeichnen(tage) {
     }
 
     artikel.append(kopf, ueberschrift, liste);
+    const tagesGruesse = nachTag?.get(tag.iso) || [];
+    if (tagesGruesse.length > 0) artikel.append(galerieVon(tagesGruesse));
     tageListe.append(artikel);
   }
 
@@ -356,6 +418,188 @@ function reisenZeichnen() {
   }
 }
 
+function extraZeitraumZeichnen(ziel, titel, liste) {
+  ziel.replaceChildren();
+  if (!liste.length) {
+    ziel.hidden = true;
+    return;
+  }
+  ziel.hidden = false;
+  const artikel = document.createElement('article');
+  artikel.className = 'tag-karte';
+  const kopf = document.createElement('h3');
+  kopf.className = 'tag-titel';
+  kopf.textContent = titel;
+  artikel.append(kopf, galerieVon(liste));
+  ziel.append(artikel);
+}
+
+function galerieVon(liste) {
+  const wrap = document.createElement('div');
+  wrap.className = 'gruss-galerie';
+  wrap.setAttribute('aria-label', 'Grüße und Fotos');
+  for (const gruss of liste) wrap.append(kachelVon(gruss, liste));
+  return wrap;
+}
+
+function kachelVon(gruss, liste) {
+  const knopf = document.createElement('button');
+  knopf.type = 'button';
+  knopf.className = 'gruss-kachel';
+  knopf.addEventListener('click', () => vollbildOeffnen(gruss, liste));
+  if (neuIds.has(gruss.id)) {
+    const neu = document.createElement('span');
+    neu.className = 'neu-punkt';
+    neu.textContent = 'Neu!';
+    knopf.append(neu);
+  }
+  const foto = (gruss.fotos || [])[0];
+  if (foto) {
+    const img = document.createElement('img');
+    img.alt = `Foto von ${gruss.von || 'unterwegs'}`;
+    knopf.append(img);
+    lazyBild(img, () => fotoUrl(gewaehlteId, kleinPfad(foto), schluessel));
+  } else {
+    knopf.classList.add('gruss-kachel-text');
+    const label = document.createElement('span');
+    label.className = 'gruss-kachel-label';
+    label.textContent = 'Gruß';
+    knopf.append(label);
+  }
+  return knopf;
+}
+
+function slidesAus(liste) {
+  const slides = [];
+  for (const gruss of liste || []) {
+    const fotos = gruss.fotos || [];
+    if (fotos.length === 0) slides.push({ gruss, foto: null });
+    else {
+      for (const foto of fotos) slides.push({ gruss, foto });
+    }
+  }
+  return slides;
+}
+
+function vollbildOeffnen(gruss, liste) {
+  const quelle = Array.isArray(liste) && liste.length ? liste : updates;
+  vollbildSlides = slidesAus(quelle);
+  if (vollbildSlides.length === 0) return;
+  const index = vollbildSlides.findIndex((slide) => slide.gruss.id === gruss.id);
+  vollbildIndex = index >= 0 ? index : 0;
+  vollbildZeigen();
+  if (typeof vollbild.showModal === 'function') vollbild.showModal();
+  else vollbild.setAttribute('open', '');
+}
+
+function vollbildSchritt(richtung) {
+  if (vollbildSlides.length < 2) return;
+  vollbildIndex = (vollbildIndex + richtung + vollbildSlides.length) % vollbildSlides.length;
+  vollbildZeigen();
+}
+
+function vollbildZeigen() {
+  const slide = vollbildSlides[vollbildIndex];
+  if (!slide) return;
+  const gruss = slide.gruss;
+  const zone = zustand?.trip?.zeitzone || 'Europe/Berlin';
+  vollbildText.textContent = gruss.text || '';
+  vollbildText.hidden = !gruss.text;
+  const wer = gruss.von ? `Gruß von ${gruss.von}` : 'Gruß';
+  const relativ = vorRelativ(gruss.zeit);
+  const absolut = zeitLang(gruss.zeit, zone);
+  vollbildZeit.textContent = [wer, relativ, absolut].filter(Boolean).join(' · ');
+  if (!slide.foto) {
+    vollbildFoto.removeAttribute('src');
+    vollbildFoto.hidden = true;
+    vollbildOhneFoto.hidden = false;
+    return;
+  }
+  vollbildOhneFoto.hidden = true;
+  vollbildFoto.hidden = false;
+  vollbildFoto.alt = `Foto von ${gruss.von || 'unterwegs'}`;
+  const reiseId = gewaehlteId;
+  const foto = slide.foto;
+  fotoUrl(reiseId, kleinPfad(foto), schluessel).then((url) => {
+    if (vollbildSlides[vollbildIndex]?.foto !== foto) return;
+    vollbildFoto.src = url;
+  }).catch(() => {
+    if (vollbildSlides[vollbildIndex]?.foto === foto) {
+      vollbildFoto.hidden = true;
+      vollbildOhneFoto.hidden = false;
+    }
+  });
+  const gross = grossPfad(foto);
+  if (gross && gross !== kleinPfad(foto)) {
+    fotoUrl(reiseId, gross, schluessel).then((url) => {
+      if (vollbildSlides[vollbildIndex]?.foto !== foto) return;
+      vollbildFoto.src = url;
+    }).catch(() => {});
+  }
+}
+
+function vollbildSchliessenJetzt() {
+  if (vollbild.open) vollbild.close();
+  else vollbild.removeAttribute('open');
+}
+
+function zeitLang(iso, zone) {
+  const zeit = new Date(iso);
+  if (Number.isNaN(zeit.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat('de-DE', {
+      timeZone: zone,
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(zeit);
+  } catch {
+    return '';
+  }
+}
+
+function gruessePaket() {
+  return {
+    updates,
+    neuester: neuesterGruss(updates),
+    neuIds,
+    fotoUrl: (foto) => fotoUrl(gewaehlteId, kleinPfad(foto), schluessel),
+  };
+}
+
+async function updatesAktualisieren() {
+  if (!schluessel || !gewaehlteId) return;
+  const fuer = gewaehlteId;
+  const liste = await updatesLaden(gewaehlteId, schluessel);
+  if (fuer !== gewaehlteId) return;
+  updates = liste;
+  neuIds = new Set(liste.filter((eintrag) => !gesehenBeimStart.has(eintrag.id)).map((eintrag) => eintrag.id));
+}
+
+function gesehenLesen(reiseId) {
+  try {
+    const roh = JSON.parse(localStorage.getItem(SPEICHER_GESEHEN) || '{}');
+    const liste = roh && Array.isArray(roh[reiseId]) ? roh[reiseId] : [];
+    return new Set(liste.filter((id) => typeof id === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function gesehenSchreiben() {
+  if (!gewaehlteId) return;
+  try {
+    const roh = JSON.parse(localStorage.getItem(SPEICHER_GESEHEN) || '{}');
+    const alt = roh && typeof roh === 'object' ? roh : {};
+    alt[gewaehlteId] = updates.map((eintrag) => eintrag.id);
+    localStorage.setItem(SPEICHER_GESEHEN, JSON.stringify(alt));
+  } catch {
+    // Privater Modus: ohne Speicher gibt es keinen Neu!-Punkt.
+  }
+}
+
 function ortPopupZeigen(ort) {
   const daten = ortPopup(ort, zustand?.trip);
   if (!daten) return;
@@ -388,25 +632,38 @@ function ortPopupZeigen(ort) {
 function zeigePasswort() {
   if (timer) clearInterval(timer);
   timer = null;
+  if (updatesTimer) clearInterval(updatesTimer);
+  updatesTimer = null;
   if (ortDialog.open) ortDialog.close();
+  if (vollbild.open) vollbild.close();
   statusSchirm.hidden = true;
   passwortSchirm.hidden = false;
   document.title = 'Reisetracker';
 }
 
 function abmelden() {
+  gesehenSchreiben();
   if (karte) {
     karte.zerstoeren();
     karte = null;
   }
   if (ortDialog.open) ortDialog.close();
+  if (vollbild.open) vollbild.close();
+  fotoUrlsFreigeben();
   schluesselVergessen();
   schluessel = null;
   index = null;
   zustand = null;
   gewaehlteId = null;
   tageGescrolltFuer = null;
+  updates = [];
+  neuIds = new Set();
+  gesehenBeimStart = new Set();
   tageListe.replaceChildren();
+  vorReise.replaceChildren();
+  vorReise.hidden = true;
+  nachReise.replaceChildren();
+  nachReise.hidden = true;
   reiseLinks.replaceChildren();
   reiseLinks.hidden = true;
   andereReisen.hidden = true;

@@ -1,8 +1,9 @@
 {
   "name": "Reise-Upload",
   "short_name": "Upload",
+  "id": "./admin.html",
   "start_url": "./admin.html",
-  "scope": "./",
+  "scope": "./admin.html",
   "display": "standalone",
   "lang": "de",
   "orientation": "portrait",

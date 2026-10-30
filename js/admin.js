@@ -23,9 +23,9 @@ const SPEICHER_TOKEN = 'reisetracker.admin.token';
 const DB_NAME = 'reisetracker.admin';
 const STORE = 'warteschlange';
 const MAX_FOTOS = 10;
-const GROSS_PX = 1600;
+const GROSS_PX = 2560;
 const KLEIN_PX = 400;
-const GROSS_Q = 0.8;
+const GROSS_Q = 0.85;
 const KLEIN_Q = 0.7;
 
 const passwortSchirm = document.querySelector('#passwort-schirm');
@@ -47,6 +47,7 @@ const sendeOk = document.querySelector('#sende-ok');
 const sendeFortschritt = document.querySelector('#sende-fortschritt');
 const sendeKnopf = document.querySelector('#sende-knopf');
 const warteHinweis = document.querySelector('#warte-hinweis');
+const warteListe = document.querySelector('#warte-liste');
 const jetztSenden = document.querySelector('#jetzt-senden');
 const updateListe = document.querySelector('#update-liste');
 const updateListeLeer = document.querySelector('#update-liste-leer');
@@ -57,6 +58,7 @@ let index = null;
 let gewaehlteId = null;
 let vorschauUrls = [];
 let sendeLaeuft = false;
+let sendeTimer = null;
 
 passwortFormular.addEventListener('submit', passwortAbsenden);
 einrichtFormular.addEventListener('submit', einrichtungSpeichern);
@@ -69,11 +71,13 @@ reiseWahl.addEventListener('change', () => {
 jetztSenden.addEventListener('click', () => warteschlangeSenden(true));
 document.querySelector('#abmelden').addEventListener('click', abmelden);
 document.querySelector('#einricht-abmelden').addEventListener('click', abmelden);
-window.addEventListener('online', () => {
-  if (!sendeSchirm.hidden) warteschlangeSenden(false);
+window.addEventListener('online', () => sendeVersuch(false));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') sendeVersuch(false);
 });
 
 start();
+serviceWorkerAnmelden();
 
 async function start() {
   try {
@@ -172,7 +176,7 @@ function sendeSchirmZeigen() {
   reisenFuellen();
   warteschlangeAnzeigen();
   listeAktualisieren().catch(() => {});
-  warteschlangeSenden(false);
+  sendeVersuch(false);
 }
 
 function reisenFuellen() {
@@ -245,6 +249,7 @@ async function grussAbsenden(ereignis) {
     if (istOffline(problem)) {
       try {
         await warteschlangeLegen(problem.paket || await grussBauen(text, dateien));
+        sendeTimerStarten();
         formularLeeren();
         zeige(sendeOk, 'Kein Internet. Der Gruß wartet auf diesem Gerät.');
       } catch {
@@ -262,15 +267,18 @@ async function grussAbsenden(ereignis) {
 }
 
 async function grussBauen(text, dateien) {
+  // Zeit und Standort gehören zum Tippen auf „Senden“, nicht zum späteren Upload.
+  const zeit = new Date().toISOString();
   const name = speicherLesen(SPEICHER_NAME) || '';
   const eintrag = {
     id: zufallsId(),
-    zeit: new Date().toISOString(),
+    zeit,
     von: name,
     text,
     fotos: [],
   };
   if (standortKasten.checked) {
+    fortschritt('Standort wird ermittelt …');
     const lage = await standortHolen();
     if (lage) {
       eintrag.lat = lage.lat;
@@ -304,20 +312,26 @@ async function grussBauen(text, dateien) {
 }
 
 async function paketSenden(paket) {
+  await paketeSenden([paket]);
+}
+
+async function paketeSenden(pakete) {
+  if (!Array.isArray(pakete) || pakete.length === 0) return;
   if (!navigator.onLine) {
     const problem = new Error('offline');
-    problem.paket = paket;
+    problem.paket = pakete[0];
     throw problem;
   }
+  const sortiert = [...pakete].sort((a, b) => String(a.eintrag?.zeit || '').localeCompare(String(b.eintrag?.zeit || '')));
   let letzterFehler = null;
   for (let versuch = 0; versuch < 4; versuch += 1) {
     try {
-      fortschritt('Gruß wird gespeichert …');
-      await githubCommit(paket, false);
+      fortschritt(sortiert.length === 1 ? 'Gruß wird gespeichert …' : `${sortiert.length} Grüße werden gespeichert …`);
+      await githubCommitPakete(sortiert);
       return;
     } catch (problem) {
       if (istOffline(problem)) {
-        problem.paket = paket;
+        problem.paket = sortiert[0];
         throw problem;
       }
       if (istKonflikt(problem) && versuch < 3) {
@@ -331,39 +345,26 @@ async function paketSenden(paket) {
 }
 
 async function githubCommit(paket, loeschen) {
+  if (loeschen) {
+    await githubCommitLoeschen(paket);
+    return;
+  }
+  await githubCommitPakete([paket]);
+}
+
+async function githubCommitLoeschen(paket) {
   const { owner, repo, branch, head, treeSha } = await repoKopf();
   const liste = await updatesLaden(owner, repo, branch, paket.reiseId);
   const updates = Array.isArray(liste.updates) ? [...liste.updates] : [];
+  const indexEintrag = updates.findIndex((u) => u.id === paket.eintrag.id);
+  if (indexEintrag < 0) return;
+  const alt = updates[indexEintrag];
+  updates.splice(indexEintrag, 1);
   const baum = [];
-
-  if (loeschen) {
-    const indexEintrag = updates.findIndex((u) => u.id === paket.eintrag.id);
-    if (indexEintrag < 0) return;
-    const alt = updates[indexEintrag];
-    updates.splice(indexEintrag, 1);
-    for (const foto of alt.fotos || []) {
-      if (foto.datei) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.datei}`));
-      if (foto.klein) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.klein}`));
-    }
-  } else if (!updates.some((u) => u.id === paket.eintrag.id)) {
-    updates.push(paket.eintrag);
-    const fotoZahl = paket.eintrag.fotos.length;
-    let fotoNr = 0;
-    for (const blob of paket.blobs) {
-      if (blob.pfad.endsWith('-k.bin')) {
-        fotoNr += 1;
-        fortschritt(`Foto ${fotoNr} von ${Math.max(1, fotoZahl)} …`);
-      }
-      const sha = await blobAnlegen(owner, repo, blob.bytes);
-      baum.push({
-        path: blob.pfad,
-        mode: '100644',
-        type: 'blob',
-        sha,
-      });
-    }
+  for (const foto of alt.fotos || []) {
+    if (foto.datei) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.datei}`));
+    if (foto.klein) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.klein}`));
   }
-
   const paketJson = await jsonVerschluesseln({ updates }, schluessel);
   const jsonBytes = new TextEncoder().encode(`${JSON.stringify(paketJson)}\n`);
   const jsonSha = await blobAnlegen(owner, repo, jsonBytes);
@@ -373,7 +374,59 @@ async function githubCommit(paket, loeschen) {
     type: 'blob',
     sha: jsonSha,
   });
+  await baumCommitten(owner, repo, branch, head, treeSha, baum);
+}
 
+/** Mehrere Grüße (bereits sortiert) in einem Commit. */
+async function githubCommitPakete(pakete) {
+  const { owner, repo, branch, head, treeSha } = await repoKopf();
+  const nachReise = new Map();
+  for (const paket of pakete) {
+    if (!nachReise.has(paket.reiseId)) nachReise.set(paket.reiseId, []);
+    nachReise.get(paket.reiseId).push(paket);
+  }
+  const baum = [];
+  let fotoGesamt = 0;
+  let fotoNr = 0;
+  for (const paket of pakete) fotoGesamt += (paket.eintrag?.fotos || []).length;
+
+  for (const [reiseId, gruppe] of nachReise) {
+    const liste = await updatesLaden(owner, repo, branch, reiseId);
+    const updates = Array.isArray(liste.updates) ? [...liste.updates] : [];
+    for (const paket of gruppe) {
+      if (updates.some((u) => u.id === paket.eintrag.id)) continue;
+      updates.push(paket.eintrag);
+      for (const blob of paket.blobs || []) {
+        if (blob.pfad.endsWith('-k.bin')) {
+          fotoNr += 1;
+          fortschritt(`Foto ${fotoNr} von ${Math.max(1, fotoGesamt)} …`);
+        }
+        const sha = await blobAnlegen(owner, repo, blob.bytes);
+        baum.push({
+          path: blob.pfad,
+          mode: '100644',
+          type: 'blob',
+          sha,
+        });
+      }
+    }
+    updates.sort((a, b) => String(a.zeit || '').localeCompare(String(b.zeit || '')));
+    const paketJson = await jsonVerschluesseln({ updates }, schluessel);
+    const jsonBytes = new TextEncoder().encode(`${JSON.stringify(paketJson)}\n`);
+    const jsonSha = await blobAnlegen(owner, repo, jsonBytes);
+    baum.push({
+      path: `daten/${reiseId}/updates.enc.json`,
+      mode: '100644',
+      type: 'blob',
+      sha: jsonSha,
+    });
+  }
+
+  if (baum.length === 0) return;
+  await baumCommitten(owner, repo, branch, head, treeSha, baum);
+}
+
+async function baumCommitten(owner, repo, branch, head, treeSha, baum) {
   const tree = await github(`/repos/${owner}/${repo}/git/trees`, {
     method: 'POST',
     body: { base_tree: treeSha, tree: baum },
@@ -500,12 +553,30 @@ async function warteschlangeLegen(paket) {
   warteschlangeAnzeigen();
 }
 
+function sendeVersuch(manuell) {
+  if (sendeSchirm.hidden && !manuell) return;
+  warteschlangeSenden(manuell);
+}
+
+function sendeTimerStarten() {
+  if (sendeTimer) return;
+  sendeTimer = setInterval(() => sendeVersuch(false), 60000);
+}
+
+function sendeTimerStoppen() {
+  if (!sendeTimer) return;
+  clearInterval(sendeTimer);
+  sendeTimer = null;
+}
+
 async function warteschlangeSenden(manuell) {
   const liste = await warteschlangeLesen();
   if (liste.length === 0) {
+    sendeTimerStoppen();
     warteschlangeAnzeigen();
     return;
   }
+  sendeTimerStarten();
   if (!navigator.onLine) {
     if (manuell) zeige(sendeFehler, 'Noch kein Internet.');
     warteschlangeAnzeigen();
@@ -515,22 +586,18 @@ async function warteschlangeSenden(manuell) {
   sendeLaeuft = true;
   jetztSenden.disabled = true;
   try {
-    for (const item of liste) {
-      const paket = {
-        reiseId: item.reiseId,
-        eintrag: item.eintrag,
-        blobs: (item.blobs || []).map((b) => ({
-          pfad: b.pfad,
-          bytes: new Uint8Array(b.bytes),
-        })),
-      };
-      await paketSenden(paket);
-      await warteschlangeEntfernen(item.id);
-    }
-    if (liste.length > 0) {
-      zeige(sendeOk, liste.length === 1 ? 'Der gespeicherte Gruß ist weg.' : 'Die gespeicherten Grüße sind weg.');
-      await listeAktualisieren();
-    }
+    const pakete = liste.map((item) => ({
+      reiseId: item.reiseId,
+      eintrag: item.eintrag,
+      blobs: (item.blobs || []).map((b) => ({
+        pfad: b.pfad,
+        bytes: new Uint8Array(b.bytes),
+      })),
+    }));
+    await paketeSenden(pakete);
+    for (const item of liste) await warteschlangeEntfernen(item.id);
+    zeige(sendeOk, liste.length === 1 ? 'Der gespeicherte Gruß ist weg.' : 'Die gespeicherten Grüße sind weg.');
+    await listeAktualisieren();
   } catch (problem) {
     if (manuell && !istOffline(problem)) zeige(sendeFehler, meldungFuer(problem));
   } finally {
@@ -538,18 +605,22 @@ async function warteschlangeSenden(manuell) {
     jetztSenden.disabled = false;
     verstecke(sendeFortschritt);
     warteschlangeAnzeigen();
+    const rest = await warteschlangeLesen();
+    if (rest.length === 0) sendeTimerStoppen();
+    else sendeTimerStarten();
   }
 }
 
 async function warteschlangeLesen() {
   try {
     const db = await dbOeffnen();
-    return await new Promise((ok, fehl) => {
+    const roh = await new Promise((ok, fehl) => {
       const tx = db.transaction(STORE, 'readonly');
       const anfrage = tx.objectStore(STORE).getAll();
       anfrage.onsuccess = () => ok(anfrage.result || []);
       anfrage.onerror = () => fehl(anfrage.error);
     });
+    return [...roh].sort((a, b) => String(a.eintrag?.zeit || '').localeCompare(String(b.eintrag?.zeit || '')));
   } catch {
     return [];
   }
@@ -582,8 +653,10 @@ async function warteschlangeLeeren() {
 function warteschlangeAnzeigen() {
   warteschlangeLesen().then((liste) => {
     const n = liste.length;
+    warteListe.replaceChildren();
     if (n === 0) {
       warteHinweis.hidden = true;
+      warteListe.hidden = true;
       jetztSenden.hidden = true;
       return;
     }
@@ -591,8 +664,44 @@ function warteschlangeAnzeigen() {
     warteHinweis.textContent = n === 1
       ? '1 Gruß wartet auf Internet'
       : `${n} Grüße warten auf Internet`;
+    warteListe.hidden = false;
     jetztSenden.hidden = false;
+    for (const item of liste) {
+      const eintrag = item.eintrag || {};
+      const li = document.createElement('li');
+      li.className = 'update-karte warte-karte';
+      const meta = document.createElement('p');
+      meta.className = 'update-meta';
+      meta.textContent = zeitText(eintrag.zeit) || 'Ohne Zeit';
+      const text = document.createElement('p');
+      const fotoZahl = Array.isArray(eintrag.fotos) ? eintrag.fotos.length : 0;
+      const fotoText = fotoZahl === 0
+        ? 'Keine Fotos'
+        : (fotoZahl === 1 ? '1 Foto' : `${fotoZahl} Fotos`);
+      text.textContent = eintrag.text
+        ? `${eintrag.text} · ${fotoText}`
+        : fotoText;
+      const knopf = document.createElement('button');
+      knopf.type = 'button';
+      knopf.textContent = 'Löschen';
+      knopf.addEventListener('click', () => warteschlangeEintragLoeschen(item.id));
+      li.append(meta, text, knopf);
+      warteListe.append(li);
+    }
   });
+}
+
+async function warteschlangeEintragLoeschen(id) {
+  if (!id || sendeLaeuft) return;
+  if (!window.confirm('Diesen wartenden Gruß wirklich löschen?')) return;
+  try {
+    await warteschlangeEntfernen(id);
+  } catch {
+    zeige(sendeFehler, 'Löschen hat nicht geklappt.');
+  }
+  warteschlangeAnzeigen();
+  const rest = await warteschlangeLesen();
+  if (rest.length === 0) sendeTimerStoppen();
 }
 
 function dbOeffnen() {
@@ -660,7 +769,7 @@ function standortHolen() {
     navigator.geolocation.getCurrentPosition(
       (pos) => ok({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
       () => ok(null),
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 },
     );
   });
 }
@@ -713,7 +822,16 @@ function fortschritt(text) {
   zeige(sendeFortschritt, text);
 }
 
+function serviceWorkerAnmelden() {
+  if (!('serviceWorker' in navigator)) return;
+  const adresse = new URL('./sw.js', document.baseURI);
+  navigator.serviceWorker.register(adresse.href).catch(() => {
+    // Ohne HTTPS oder auf file:// gibt es keinen Worker. Die Seite läuft trotzdem.
+  });
+}
+
 function abmelden() {
+  sendeTimerStoppen();
   speicherLoeschen(SPEICHER_SCHLUESSEL);
   speicherLoeschen(SPEICHER_NAME);
   speicherLoeschen(SPEICHER_BENUTZER);

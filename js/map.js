@@ -95,6 +95,7 @@ export async function karteErstellen(container) {
   const landGruppe = zoomGruppe.append('g').attr('class', 'laender');
   const routenGruppe = zoomGruppe.append('g').attr('class', 'routen');
   const nadelGruppe = zoomGruppe.append('g').attr('class', 'nadeln');
+  const polaroidGruppe = zoomGruppe.append('g').attr('class', 'polaroids');
   const fahrzeugGruppe = zoomGruppe.append('g').attr('class', 'fahrzeuge');
 
   const himmel = svg.append('g').attr('class', 'nacht-deko');
@@ -119,7 +120,16 @@ export async function karteErstellen(container) {
   let animationsRahmen = 0;
   let angepasst = false;
   let ortKlick = null;
+  let grussKlick = null;
+  let grussDaten = { updates: [], neuester: null, neuIds: new Set(), fotoUrl: null };
+  let blaseEingeklappt = false;
+  let blaseGrussId = null;
   const marken = [];
+
+  const blase = document.createElement('div');
+  blase.className = 'gruss-blase';
+  blase.hidden = true;
+  container.append(blase);
 
   const verhalten = zoom()
     .scaleExtent([1, 14])
@@ -128,6 +138,7 @@ export async function karteErstellen(container) {
       zoomGruppe.attr('transform', transform);
       // Cluster hängen vom Zoom ab: Nadeln neu, Fahrzeuge nur skalieren.
       nadelnNeu();
+      blasePlatzieren();
     });
 
   svg.call(verhalten);
@@ -183,10 +194,10 @@ export async function karteErstellen(container) {
   }
 
   function nadelnNeu() {
-    const fahrzeuge = marken.filter((m) => m.typ === 'fahrzeug');
+    const halten = marken.filter((m) => m.typ !== 'nadel');
     nadelGruppe.selectAll('*').remove();
     marken.length = 0;
-    for (const fahrzeug of fahrzeuge) marken.push(fahrzeug);
+    for (const stueck of halten) marken.push(stueck);
     nadelnZeichnen();
     markenSkalieren();
     schilderOrdnen();
@@ -475,7 +486,9 @@ export async function karteErstellen(container) {
     marken.length = 0;
     routenZeichnen();
     fahrzeugZeichnen();
+    polaroidsZeichnen();
     nadelnNeu();
+    blaseZeichnen();
   }
 
   function anpassenUndZurueck() {
@@ -496,13 +509,14 @@ export async function karteErstellen(container) {
   });
   beobachter.observe(container);
 
-  function aktualisieren(neuesTrip, neuerStatus, neueZeit) {
+  function aktualisieren(neuesTrip, neuerStatus, neueZeit, neueGruesse = null) {
     const neueId = neuesTrip?.id || null;
     const gewechselt = angepasst && neueId !== tripId;
     trip = neuesTrip;
     tripId = neueId;
     status = neuerStatus;
     zeit = neueZeit instanceof Date ? neueZeit : new Date(neueZeit);
+    if (neueGruesse) grussDaten = neueGruesse;
     svg.classed('nacht', istNachtLokal(zeit, trip?.zeitzone || 'Europe/Berlin'));
     if (!angepasst || gewechselt) {
       anpassenUndZurueck();
@@ -512,6 +526,222 @@ export async function karteErstellen(container) {
 
   function setzeOrtKlick(fn) {
     ortKlick = typeof fn === 'function' ? fn : null;
+  }
+
+  function setzeGrussKlick(fn) {
+    grussKlick = typeof fn === 'function' ? fn : null;
+  }
+
+  function polaroidsZeichnen() {
+    polaroidGruppe.selectAll('*').remove();
+    marken.splice(0, marken.length, ...marken.filter((m) => m.typ !== 'polaroid'));
+    const neuester = grussDaten.neuester;
+    const liste = (grussDaten.updates || []).filter((g) => Number.isFinite(g.lat) && Number.isFinite(g.lon));
+    for (const gruss of liste) {
+      // Pin des neuesten Grußes am Schiff/an den Figuren weglassen – steht schon in der Blase.
+      if (neuester && gruss.id === neuester.id && amFahrzeug(gruss)) continue;
+      const pos = xy(gruss.lat, gruss.lon);
+      if (!pos) continue;
+      const innen = marke(polaroidGruppe, pos.x, pos.y, 0, 'polaroid-innen', 'polaroid');
+      polaroidZeichnen(innen, gruss, grussDaten.neuIds?.has(gruss.id));
+      innen.style('cursor', 'pointer')
+        .attr('role', 'button')
+        .on('click', (ereignis) => {
+          ereignis.sourceEvent?.stopPropagation();
+          grussKlick?.(gruss);
+        });
+      const foto = (gruss.fotos || [])[0];
+      if (foto && grussDaten.fotoUrl) {
+        const bild = innen.select('.polaroid-foto');
+        const knoten = innen.node()?.parentNode;
+        const laden = async () => {
+          try {
+            const url = await grussDaten.fotoUrl(foto);
+            if (url && bild.node()) bild.attr('href', url);
+          } catch {
+            // Kleines Foto fehlt: Polaroid bleibt ohne Bild.
+          }
+        };
+        if (knoten && typeof IntersectionObserver === 'function') {
+          const observer = new IntersectionObserver((eintraege) => {
+            if (!eintraege.some((e) => e.isIntersecting)) return;
+            observer.disconnect();
+            laden();
+          }, { root: container, rootMargin: '80px' });
+          observer.observe(knoten);
+        } else laden();
+      }
+    }
+  }
+
+  function amFahrzeug(gruss) {
+    const hier = zielPunkt();
+    if (!hier) return false;
+    const a = xy(gruss.lat, gruss.lon);
+    const b = xy(hier.lat, hier.lon);
+    if (!a || !b) return false;
+    return Math.hypot(a.x - b.x, a.y - b.y) < 36;
+  }
+
+  function blaseZeichnen() {
+    const gruss = grussDaten.neuester;
+    if (!gruss) {
+      blase.hidden = true;
+      blase.replaceChildren();
+      blaseGrussId = null;
+      return;
+    }
+    if (blaseGrussId !== gruss.id) {
+      blaseEingeklappt = false;
+      blaseGrussId = gruss.id;
+    }
+    blase.hidden = false;
+    blase.replaceChildren();
+    blase.classList.toggle('gruss-blase-klein', blaseEingeklappt);
+    blase.classList.remove('gruss-blase-unten');
+
+    if (blaseEingeklappt) {
+      const mini = document.createElement('button');
+      mini.type = 'button';
+      mini.className = 'gruss-blase-mini';
+      mini.setAttribute('aria-label', 'Gruß aufklappen');
+      mini.innerHTML = '<svg viewBox="0 0 28 24" width="28" height="24" aria-hidden="true"><path d="M4 3h20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8l-5 5v-5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" fill="#fffdf8" stroke="#1a1208" stroke-width="2" stroke-linejoin="round"/></svg>';
+      if (grussDaten.neuIds?.has(gruss.id)) {
+        const neu = document.createElement('span');
+        neu.className = 'neu-punkt';
+        neu.textContent = 'Neu!';
+        mini.append(neu);
+      }
+      mini.addEventListener('click', (ereignis) => {
+        ereignis.stopPropagation();
+        blaseEingeklappt = false;
+        blaseZeichnen();
+      });
+      blase.append(mini);
+      requestAnimationFrame(() => requestAnimationFrame(blasePlatzieren));
+      return;
+    }
+
+    const zu = document.createElement('button');
+    zu.type = 'button';
+    zu.className = 'gruss-blase-zu';
+    zu.setAttribute('aria-label', 'Gruß einklappen');
+    zu.textContent = '×';
+    zu.addEventListener('click', (ereignis) => {
+      ereignis.stopPropagation();
+      blaseEingeklappt = true;
+      blaseZeichnen();
+    });
+    blase.append(zu);
+
+    const inhalt = document.createElement('button');
+    inhalt.type = 'button';
+    inhalt.className = 'gruss-blase-inhalt';
+    inhalt.addEventListener('click', (ereignis) => {
+      ereignis.stopPropagation();
+      grussKlick?.(gruss);
+    });
+
+    if (grussDaten.neuIds?.has(gruss.id)) {
+      const neu = document.createElement('span');
+      neu.className = 'neu-punkt';
+      neu.textContent = 'Neu!';
+      inhalt.append(neu);
+    }
+    const kopf = document.createElement('p');
+    kopf.className = 'gruss-blase-kopf';
+    kopf.textContent = `Gruß von ${gruss.von || 'unterwegs'} · ${vorRelativLokal(gruss.zeit)}`;
+    inhalt.append(kopf);
+    if (gruss.text) {
+      const text = document.createElement('p');
+      text.className = 'gruss-blase-text';
+      text.textContent = gruss.text;
+      inhalt.append(text);
+    }
+    const fotos = Array.isArray(gruss.fotos) ? gruss.fotos : [];
+    if (fotos.length > 0) {
+      const reihe = document.createElement('div');
+      reihe.className = 'gruss-blase-fotos';
+      const rest = fotos.length > 3 ? fotos.length - 3 : 0;
+      const zeigen = rest > 0 ? fotos.slice(0, 3) : fotos;
+      for (const foto of zeigen) {
+        const img = document.createElement('img');
+        img.className = 'gruss-blase-foto';
+        img.alt = 'Foto zum Gruß';
+        reihe.append(img);
+        if (grussDaten.fotoUrl) {
+          grussDaten.fotoUrl(foto).then((url) => {
+            if (url && img.isConnected) img.src = url;
+          }).catch(() => { img.hidden = true; });
+          img.addEventListener('load', () => blasePlatzieren());
+        }
+      }
+      if (rest > 0) {
+        const mehr = document.createElement('span');
+        mehr.className = 'gruss-blase-mehr';
+        mehr.textContent = `+${rest}`;
+        reihe.append(mehr);
+      }
+      inhalt.append(reihe);
+    }
+    blase.append(inhalt);
+    requestAnimationFrame(() => requestAnimationFrame(blasePlatzieren));
+  }
+
+  function blasePlatzieren() {
+    if (blase.hidden) return;
+    const fahrzeug = container.querySelector('.fahrzeuge > g');
+    const rahmen = container.getBoundingClientRect();
+    if (!fahrzeug || rahmen.width === 0) return;
+    const box = fahrzeug.getBoundingClientRect();
+    if (box.width === 0 && box.height === 0) return;
+    const ankerX = box.left + box.width / 2 - rahmen.left;
+    const obenY = box.top - rahmen.top;
+    const untenY = box.bottom - rahmen.top;
+
+    blase.style.left = `${ankerX}px`;
+    const polaroidKaesten = [...container.querySelectorAll('.polaroids > g')]
+      .map((g) => g.getBoundingClientRect())
+      .filter((r) => r.width > 0 && r.height > 0);
+    const trifft = (a, b) => !(a.right < b.left + 2 || a.left > b.right - 2 || a.bottom < b.top + 2 || a.top > b.bottom - 2);
+    const frei = (kasten) => !polaroidKaesten.some((p) => trifft(kasten, p));
+
+    blase.classList.remove('gruss-blase-unten');
+    blase.style.top = `${obenY}px`;
+    let eigene = blase.getBoundingClientRect();
+    const obenOk = eigene.top >= rahmen.top + 8 && frei(eigene);
+    if (!obenOk) {
+      blase.classList.add('gruss-blase-unten');
+      blase.style.top = `${untenY + 8 + eigene.height / 2}px`;
+      eigene = blase.getBoundingClientRect();
+      const untenOk = eigene.bottom <= rahmen.bottom - 8 && frei(eigene);
+      if (!untenOk) {
+        // Unten auch belegt: oben belassen, damit der Gruß sichtbar bleibt.
+        blase.classList.remove('gruss-blase-unten');
+        blase.style.top = `${obenY}px`;
+        eigene = blase.getBoundingClientRect();
+      }
+    }
+
+    if (eigene.left < rahmen.left + 8) {
+      blase.style.left = `${eigene.width / 2 + 8}px`;
+    } else if (eigene.right > rahmen.right - 8) {
+      blase.style.left = `${rahmen.width - eigene.width / 2 - 8}px`;
+    }
+  }
+
+  function vorRelativLokal(iso) {
+    const zeitpunkt = new Date(iso);
+    if (Number.isNaN(zeitpunkt.getTime())) return '';
+    const minuten = Math.max(0, Math.round((Date.now() - zeitpunkt.getTime()) / 60000));
+    if (minuten < 1) return 'gerade eben';
+    if (minuten === 1) return 'vor 1 Min.';
+    if (minuten < 60) return `vor ${minuten} Min.`;
+    const stunden = Math.round(minuten / 60);
+    if (stunden === 1) return 'vor 1 Std.';
+    if (stunden < 24) return `vor ${stunden} Std.`;
+    const tage = Math.round(stunden / 24);
+    return tage === 1 ? 'vor 1 Tag' : `vor ${tage} Tagen`;
   }
 
   function sanft(ziel) {
@@ -555,7 +785,46 @@ export async function karteErstellen(container) {
     });
   }
 
-  return { aktualisieren, ganzeReise, woSindWir, setzeOrtKlick, zerstoeren };
+  return { aktualisieren, ganzeReise, woSindWir, setzeOrtKlick, setzeGrussKlick, zerstoeren };
+}
+
+let polaroidClipNr = 0;
+
+function polaroidZeichnen(innen, gruss, neu) {
+  innen.append('rect')
+    .attr('class', 'polaroid-rahmen')
+    .attr('x', -18)
+    .attr('y', -22)
+    .attr('width', 36)
+    .attr('height', 42)
+    .attr('rx', 3);
+  if ((gruss.fotos || []).length > 0) {
+    polaroidClipNr += 1;
+    const clipId = `rt-polaroid-${polaroidClipNr}`;
+    innen.append('clipPath')
+      .attr('id', clipId)
+      .append('rect')
+      .attr('x', -14)
+      .attr('y', -18)
+      .attr('width', 28)
+      .attr('height', 28);
+    innen.append('image')
+      .attr('class', 'polaroid-foto')
+      .attr('clip-path', `url(#${clipId})`)
+      .attr('x', -14)
+      .attr('y', -18)
+      .attr('width', 28)
+      .attr('height', 28)
+      .attr('preserveAspectRatio', 'xMidYMid slice');
+  } else {
+    const symbol = innen.append('g').attr('class', 'polaroid-symbol').attr('transform', 'translate(0,-4)');
+    symbol.append('path')
+      .attr('d', 'M-10 -6 h20 v12 h-6 l-4 5 l-4 -5 h-6 z')
+      .attr('class', 'polaroid-blase');
+  }
+  if (neu) {
+    innen.append('circle').attr('class', 'polaroid-neu').attr('cx', 14).attr('cy', -20).attr('r', 6);
+  }
 }
 
 function istNachtLokal(zeit, zone) {
