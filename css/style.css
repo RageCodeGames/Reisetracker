@@ -313,7 +313,7 @@ button:disabled {
 
 .nadel-name {
   font-family: "Fredoka", "Segoe UI", sans-serif;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 700;
   fill: #1a1208;
 }
@@ -327,12 +327,13 @@ button:disabled {
 .mini-zug, .zug-huelle { fill: #e23d3d; stroke: #1a1208; stroke-width: 2; }
 .reise-karte.nacht .zug-huelle { fill: #24306e; }
 
-.rumpf { fill: #1d4e8f; stroke: #1a1208; stroke-width: 2.5; stroke-linejoin: round; }
-.aufbau { fill: #fffdf8; stroke: #1a1208; stroke-width: 2.5; }
-.schornstein { fill: #f2d48a; stroke: #1a1208; stroke-width: 2; }
-.schornstein-band { fill: #1d4e8f; }
 .fenster { fill: #d7f1f6; stroke: #1a1208; stroke-width: 1.5; }
 .reise-karte.nacht .fenster { fill: #ffe14a; }
+/* Nacht: Fensterbänder und Bullaugen aus icons/schiff.svg */
+.reise-karte.nacht .schiff-fenster,
+.reise-karte.nacht .schiff-bullauge {
+  fill: #ffd84d;
+}
 .rad { fill: #1a1208; }
 .kielwasser { fill: none; stroke: #f7fffe; stroke-width: 2.5; stroke-linecap: round; }
 .rauch circle { fill: #f4f7f8; }
@@ -372,7 +373,7 @@ button:disabled {
 .auf-see .anker-gruppe { display: none; }
 
 .auf-see .schiff-koerper {
-  transform-origin: 8px 6px;
+  transform-origin: 0px 10px;
   animation: schaukeln 3.2s ease-in-out infinite;
 }
 
@@ -445,7 +446,7 @@ button:disabled {
 
 .tag-zeilen li {
   display: grid;
-  grid-template-columns: 5.6rem 1fr;
+  grid-template-columns: 7.75rem 1fr;
   gap: 0.35rem 0.55rem;
   margin: 0 0 0.35rem;
   font-size: 18px;
@@ -463,6 +464,7 @@ button:disabled {
 .tag-uhr {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .reise-links {

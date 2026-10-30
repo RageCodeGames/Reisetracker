@@ -235,7 +235,18 @@ export function reisetagStand(eintrag, zeitpunkt, zone = 'Europe/Berlin') {
   if (heute > eintrag.bis) nummer = gesamt;
   if (nummer < 0) nummer = 0;
   if (nummer > gesamt) nummer = gesamt;
-  return { nummer, gesamt };
+  let text = `Reisetag ${nummer} von ${gesamt}`;
+  if (nummer === 0) {
+    const mittag = new Date(mitternachtVonIso(eintrag.von, zone).getTime() + 12 * 60 * 60 * 1000);
+    const datum = new Intl.DateTimeFormat('de-DE', {
+      timeZone: zone,
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }).format(mittag);
+    text = `Abfahrt am ${datum}`;
+  }
+  return { nummer, gesamt, text };
 }
 
 /** Punkte einer Fahrt: Ort davor, Wegpunkte, Ort danach. */

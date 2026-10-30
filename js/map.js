@@ -11,8 +11,22 @@ import { feature } from 'https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/+esm
 import { fahrtPunkte, streckeTeilen } from './trip.js';
 
 const ATLAS_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json';
+const SCHIFF_URL = new URL('../icons/schiff.svg', import.meta.url).href;
+/** Figuren und Nadeln ca. 30 % kleiner als zuvor. */
+const FIGUR_SKALA = 0.7;
+const SCHRIFT_PX = 14;
+/** Orte näher als so viele Bildschirm-Pixel teilen sich eine Nadel. */
+const CLUSTER_PX = 40;
+const NADEL_RADIUS = 13;
+/** Comic-Schiff aus icons/schiff.svg, ca. 60px breit auf der Karte. */
+const SCHIFF_BREITE = 60;
+const SCHIFF_VB_W = 240;
+const SCHIFF_VB_H = 124;
+/** Schornstein: ca. 42 % der Breite von links, ganz oben. */
+const SCHIFF_SCHORNSTEIN = { x: SCHIFF_VB_W * 0.42, y: 4 };
 
 let atlasVersprechen = null;
+let schiffVorlage = null;
 
 function atlasLaden() {
   if (!atlasVersprechen) {
@@ -27,12 +41,32 @@ function atlasLaden() {
   return atlasVersprechen;
 }
 
+/** SVG unverändert laden; Fenstergruppen bekommen Klassen für die Nacht. */
+async function schiffSvgLaden() {
+  if (schiffVorlage) return schiffVorlage;
+  const antwort = await fetch(SCHIFF_URL);
+  if (!antwort.ok) throw new Error('schiff');
+  const text = await antwort.text();
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  if (doc.querySelector('parsererror')) throw new Error('schiff');
+  const root = doc.documentElement;
+  for (const kind of root.children) {
+    const fill = kind.getAttribute('fill');
+    if (fill === '#7fd3e6') kind.setAttribute('class', 'schiff-fenster');
+    if (fill === '#ffffff' && kind.querySelector('circle')) {
+      kind.setAttribute('class', 'schiff-bullauge');
+    }
+  }
+  schiffVorlage = root;
+  return schiffVorlage;
+}
+
 /**
  * Baut die Karte einmal. aktualisieren setzt Fahrzeug, Route und Nacht
  * neu, ohne die Welt neu zu laden und ohne den Zoom zu verwerfen.
  */
 export async function karteErstellen(container) {
-  const topo = await atlasLaden();
+  const [topo] = await Promise.all([atlasLaden(), schiffSvgLaden()]);
   const laender = feature(topo, topo.objects.countries);
 
   container.replaceChildren();
@@ -92,7 +126,8 @@ export async function karteErstellen(container) {
     .on('zoom', (ereignis) => {
       transform = ereignis.transform;
       zoomGruppe.attr('transform', transform);
-      markenSkalieren();
+      // Cluster hängen vom Zoom ab: Nadeln neu, Fahrzeuge nur skalieren.
+      nadelnNeu();
     });
 
   svg.call(verhalten);
@@ -139,57 +174,139 @@ export async function karteErstellen(container) {
     }
   }
 
-  function marke(gruppe, x, y, versatz = 0, klasse = '') {
+  function marke(gruppe, x, y, versatz = 0, klasse = '', typ = 'nadel') {
     const aussen = gruppe.append('g').attr('transform', `translate(${x},${y})`);
     const innen = aussen.append('g');
     if (klasse) innen.attr('class', klasse);
-    marken.push({ innen, versatz });
+    marken.push({ innen, versatz, typ });
     return innen;
   }
 
+  function nadelnNeu() {
+    const fahrzeuge = marken.filter((m) => m.typ === 'fahrzeug');
+    nadelGruppe.selectAll('*').remove();
+    marken.length = 0;
+    for (const fahrzeug of fahrzeuge) marken.push(fahrzeug);
+    nadelnZeichnen();
+    markenSkalieren();
+    schilderOrdnen();
+  }
+
   function schilderOrdnen() {
+    const knoepfe = container.parentElement?.querySelector('.karten-knopfleiste')?.getBoundingClientRect();
     const eintraege = [...container.querySelectorAll('.nadel-innen')].map((g) => ({
+      innen: g,
+      kopf: g.querySelector('.nadel-kopf'),
       schild: g.querySelector('.nadel-schild'),
       name: g.querySelector('.nadel-name'),
-    })).filter((eintrag) => eintrag.schild && eintrag.name);
-    const knoepfe = container.parentElement?.querySelector('.karten-knopfleiste')?.getBoundingClientRect();
-    const k = transform.k || 1;
-    const kasten = (eintrag) => eintrag.schild.getBoundingClientRect();
-    const schiebe = (eintrag, dyScreen) => {
-      const dy = dyScreen * k;
-      eintrag.name.setAttribute('y', Number(eintrag.name.getAttribute('y')) + dy);
-      eintrag.schild.setAttribute('y', Number(eintrag.schild.getAttribute('y')) + dy);
-    };
-    const nachOben = (eintrag) => {
-      eintrag.name.setAttribute('y', -46);
-      const box = eintrag.name.getBBox();
-      eintrag.schild.setAttribute('x', box.x - 6);
-      eintrag.schild.setAttribute('y', box.y - 3);
-      eintrag.schild.setAttribute('width', box.width + 12);
-      eintrag.schild.setAttribute('height', box.height + 6);
-    };
+    })).filter((eintrag) => eintrag.schild && eintrag.name && eintrag.kopf);
+
     const trifft = (a, b) => !(a.right < b.left + 2 || a.left > b.right - 2 || a.bottom < b.top + 2 || a.top > b.bottom - 2);
+    const kastenSchild = (eintrag) => eintrag.schild.getBoundingClientRect();
+    const kastenKopf = (eintrag) => eintrag.kopf.getBoundingClientRect();
+
+    const seiten = ['unten', 'rechts', 'links', 'oben'];
+    const scoreFuer = (eintrag, seite) => {
+      schildAnSeite(eintrag, seite);
+      const schild = kastenSchild(eintrag);
+      let score = 0;
+      if (knoepfe && trifft(schild, knoepfe)) score += 1000;
+      for (const andere of eintraege) {
+        if (andere === eintrag) continue;
+        if (trifft(schild, kastenKopf(andere))) score += 200;
+        if (andere.seite && trifft(schild, kastenSchild(andere))) score += 100;
+      }
+      if (seite === 'unten') score -= 2;
+      if (seite === 'rechts') score -= 1;
+      return score;
+    };
 
     for (const eintrag of eintraege) {
-      if (knoepfe && kasten(eintrag).bottom > knoepfe.top - 6) nachOben(eintrag);
+      let beste = 'unten';
+      let besteScore = Infinity;
+      for (const seite of seiten) {
+        const score = scoreFuer(eintrag, seite);
+        if (score < besteScore) {
+          besteScore = score;
+          beste = seite;
+        }
+      }
+      schildAnSeite(eintrag, beste);
+      eintrag.seite = beste;
     }
-    eintraege.sort((a, b) => kasten(a).top - kasten(b).top);
-    for (let i = 0; i < eintraege.length; i += 1) {
-      for (let runde = 0; runde < 8; runde += 1) {
-        const rect = kasten(eintraege[i]);
-        let blocker = null;
-        for (let j = 0; j < i; j += 1) {
-          const andere = kasten(eintraege[j]);
-          if (trifft(rect, andere)) {
-            blocker = andere;
-            break;
+
+    // Zweiter Durchgang, falls zwei Schilder noch kollidieren.
+    for (let runde = 0; runde < 3; runde += 1) {
+      let geaendert = false;
+      for (const eintrag of eintraege) {
+        const schild = kastenSchild(eintrag);
+        const kollision = eintraege.some((andere) => andere !== eintrag && (
+          trifft(schild, kastenKopf(andere))
+          || (andere.seite && trifft(schild, kastenSchild(andere)))
+        )) || (knoepfe && trifft(schild, knoepfe));
+        if (!kollision) continue;
+        let beste = eintrag.seite;
+        let besteScore = Infinity;
+        for (const seite of seiten) {
+          const score = scoreFuer(eintrag, seite);
+          if (score < besteScore) {
+            besteScore = score;
+            beste = seite;
           }
         }
-        if (!blocker) break;
-        schiebe(eintraege[i], blocker.bottom - rect.top + 4);
-        if (knoepfe && kasten(eintraege[i]).bottom > knoepfe.top - 6) nachOben(eintraege[i]);
+        if (beste !== eintrag.seite) geaendert = true;
+        schildAnSeite(eintrag, beste);
+        eintrag.seite = beste;
       }
+      if (!geaendert) break;
     }
+  }
+
+  function schildAnSeite(eintrag, seite) {
+    const pad = 5;
+    const abstand = 5;
+    const r = NADEL_RADIUS;
+    eintrag.name.setAttribute('font-size', SCHRIFT_PX);
+    eintrag.name.setAttribute('text-anchor', 'middle');
+    eintrag.name.setAttribute('dominant-baseline', 'middle');
+    eintrag.name.setAttribute('x', 0);
+    eintrag.name.setAttribute('y', 0);
+    let box;
+    try {
+      box = eintrag.name.getBBox();
+    } catch {
+      const laenge = String(eintrag.name.textContent || '').length;
+      box = { x: -laenge * 4, y: -8, width: laenge * 8, height: 16 };
+    }
+    const w = box.width + pad * 2;
+    const h = box.height + pad * 2;
+    let x = 0;
+    let y = 0;
+    if (seite === 'unten') {
+      x = 0;
+      y = r + abstand + h / 2;
+    } else if (seite === 'oben') {
+      x = 0;
+      y = -(r + abstand + h / 2);
+    } else if (seite === 'rechts') {
+      x = r + abstand + w / 2;
+      y = 0;
+    } else {
+      x = -(r + abstand + w / 2);
+      y = 0;
+    }
+    eintrag.name.setAttribute('x', x);
+    eintrag.name.setAttribute('y', y);
+    let fertig;
+    try {
+      fertig = eintrag.name.getBBox();
+    } catch {
+      fertig = { x: x - w / 2 + pad, y: y - h / 2 + pad, width: w - pad * 2, height: h - pad * 2 };
+    }
+    eintrag.schild.setAttribute('x', fertig.x - pad);
+    eintrag.schild.setAttribute('y', fertig.y - pad);
+    eintrag.schild.setAttribute('width', fertig.width + pad * 2);
+    eintrag.schild.setAttribute('height', fertig.height + pad * 2);
   }
 
   function xy(lat, lon) {
@@ -242,31 +359,48 @@ export async function karteErstellen(container) {
       const bisher = orte.get(schluessel);
       if (!bisher) {
         orte.set(schluessel, { eintrag, besucht: besucht && !aktuell, aktuell });
-      } else {
-        if (aktuell) {
-          bisher.aktuell = true;
-          bisher.besucht = false;
-          bisher.eintrag = eintrag;
-        } else if (besucht && !bisher.aktuell) {
-          bisher.besucht = true;
-        } else if (!bisher.aktuell && !besucht && ortBesucht(bisher.eintrag, zeit)) {
-          // Kommender Besuch ersetzt einen schon vergangenen Eintrag derselben Nadel.
-          bisher.eintrag = eintrag;
-          bisher.besucht = false;
-        }
+      } else if (aktuell) {
+        bisher.aktuell = true;
+        bisher.besucht = false;
+        bisher.eintrag = eintrag;
+      } else if (besucht && !bisher.aktuell) {
+        bisher.besucht = true;
+      } else if (!bisher.aktuell && !besucht && ortBesucht(bisher.eintrag, zeit)) {
+        bisher.eintrag = eintrag;
+        bisher.besucht = false;
       }
     }
-    for (const { eintrag, besucht, aktuell } of orte.values()) {
-      const pos = xy(eintrag.lat, eintrag.lon);
+
+    const punkte = [];
+    for (const wert of orte.values()) {
+      const pos = xy(wert.eintrag.lat, wert.eintrag.lon);
       if (!pos) continue;
-      const innen = marke(nadelGruppe, pos.x, pos.y, 0, 'nadel-innen');
-      nadelSymbol(innen, eintrag, besucht, aktuell);
+      const bildschirm = transform.apply([pos.x, pos.y]);
+      punkte.push({
+        ...wert,
+        x: pos.x,
+        y: pos.y,
+        sx: bildschirm[0],
+        sy: bildschirm[1],
+      });
+    }
+
+    for (const cluster of orteClustern(punkte, CLUSTER_PX)) {
+      const x = cluster.reduce((s, p) => s + p.x, 0) / cluster.length;
+      const y = cluster.reduce((s, p) => s + p.y, 0) / cluster.length;
+      const aktuell = cluster.some((p) => p.aktuell);
+      const besucht = cluster.every((p) => p.besucht) && !aktuell;
+      const vertreter = cluster.find((p) => p.aktuell)
+        || cluster.slice().sort((a, b) => artPrio(b.eintrag.art) - artPrio(a.eintrag.art))[0];
+      const name = gemeinsamerName(cluster.map((p) => p.eintrag.name));
+      const innen = marke(nadelGruppe, x, y, 0, 'nadel-innen', 'nadel');
+      nadelSymbol(innen, vertreter.eintrag, besucht, aktuell, name);
       innen.style('cursor', 'pointer')
         .attr('role', 'button')
         .attr('tabindex', 0)
         .on('click', (ereignis) => {
           ereignis.sourceEvent?.stopPropagation();
-          ortKlick?.(eintrag);
+          ortKlick?.(vertreter.eintrag);
         });
     }
   }
@@ -277,16 +411,23 @@ export async function karteErstellen(container) {
     if (!hier) return;
     const pos = xy(hier.lat, hier.lon);
     if (!pos) return;
-    const innen = marke(fahrzeugGruppe, pos.x, pos.y);
+    const innen = marke(fahrzeugGruppe, pos.x, pos.y, 0, '', 'fahrzeug');
     const art = fahrzeugArt();
     const richtung = fahrzeugRichtung();
-    const flip = innen.append('g');
+    // Schiff hat eigene Zielbreite (60px), andere Figuren nutzen FIGUR_SKALA.
+    if (art === 'schiff' || art === 'schiff-hafen') {
+      const flip = innen.append('g');
+      if (richtung === 'links') flip.attr('transform', 'scale(-1,1)');
+      schiffZeichnen(flip, art === 'schiff');
+      return;
+    }
+    const skala = innen.append('g').attr('transform', `scale(${FIGUR_SKALA})`);
+    const flip = skala.append('g');
     if (richtung === 'links') flip.attr('transform', 'scale(-1,1)');
-    if (art === 'schiff' || art === 'schiff-hafen') schiffZeichnen(flip, art === 'schiff');
-    else if (art === 'zug') zugZeichnen(flip, innen);
+    if (art === 'zug') zugZeichnen(flip, skala);
     else if (art === 'sbahn') sbahnZeichnen(flip);
     else if (art === 'taxi') taxiZeichnen(flip);
-    else leuteZeichnen(innen, schlaeft());
+    else leuteZeichnen(skala, schlaeft());
   }
 
   function zielPunkt() {
@@ -333,10 +474,8 @@ export async function karteErstellen(container) {
   function szeneNeu() {
     marken.length = 0;
     routenZeichnen();
-    nadelnZeichnen();
     fahrzeugZeichnen();
-    markenSkalieren();
-    schilderOrdnen();
+    nadelnNeu();
   }
 
   function anpassenUndZurueck() {
@@ -459,42 +598,102 @@ function routenKlasse(modus) {
   return 'route route-grau';
 }
 
-function nadelSymbol(innen, ort, besucht, aktuell) {
+function nadelSymbol(innen, ort, besucht, aktuell, anzeigeName) {
   if (aktuell) {
-    innen.append('circle').attr('class', 'nadel-ring').attr('r', 26);
+    innen.append('circle').attr('class', 'nadel-ring').attr('r', 18);
   }
-  innen.append('circle').attr('class', 'nadel-kopf').attr('r', 18);
-  const symbol = innen.append('g').attr('class', 'nadel-symbol');
+  innen.append('circle').attr('class', 'nadel-kopf').attr('r', NADEL_RADIUS);
+  const symbol = innen.append('g').attr('class', 'nadel-symbol').attr('transform', `scale(${FIGUR_SKALA})`);
   if (ort.art === 'hotel') bettZeichnen(symbol);
   else if (ort.art === 'hafen') ankerZeichnen(symbol.append('g').attr('transform', 'scale(0.55)'));
   else if (ort.art === 'bahnhof') miniZugZeichnen(symbol);
   else hausZeichnen(symbol);
   if (besucht) {
-    const haken = innen.append('g').attr('transform', 'translate(12,-14)');
-    haken.append('circle').attr('class', 'haken-kreis').attr('r', 9);
-    haken.append('path').attr('class', 'haken').attr('d', 'M-5 0 l3 3 l6 -7');
+    const haken = innen.append('g').attr('transform', 'translate(9,-10)');
+    haken.append('circle').attr('class', 'haken-kreis').attr('r', 7);
+    haken.append('path').attr('class', 'haken').attr('d', 'M-4 0 l2.5 2.5 l5 -6');
   }
-  const name = innen.append('text')
+  const text = anzeigeName || ort.name || '';
+  innen.append('text')
     .attr('class', 'nadel-name')
-    .attr('y', 40)
+    .attr('y', NADEL_RADIUS + 16)
     .attr('text-anchor', 'middle')
-    .attr('font-size', 18)
-    .text(ort.name || '');
-  let kasten = { x: -36, y: 22, width: 72, height: 24 };
-  try {
-    const box = name.node().getBBox();
-    if (box.width > 0) kasten = box;
-  } catch {
-    // Die Karte ist noch nicht sichtbar: Schätzwert reicht fürs Schild.
-    kasten = { x: -(String(ort.name || '').length * 5), y: 22, width: String(ort.name || '').length * 10, height: 24 };
-  }
+    .attr('dominant-baseline', 'middle')
+    .attr('font-size', SCHRIFT_PX)
+    .text(text);
+  // Platzhalter-Schild; schilderOrdnen setzt Lage und Größe.
   innen.insert('rect', '.nadel-name')
     .attr('class', 'nadel-schild')
-    .attr('x', kasten.x - 6)
-    .attr('y', kasten.y - 2)
-    .attr('width', kasten.width + 12)
-    .attr('height', kasten.height + 6)
-    .attr('rx', 8);
+    .attr('x', -20)
+    .attr('y', NADEL_RADIUS + 4)
+    .attr('width', 40)
+    .attr('height', 20)
+    .attr('rx', 7);
+}
+
+function artPrio(art) {
+  if (art === 'hotel') return 4;
+  if (art === 'hafen') return 3;
+  if (art === 'zuhause') return 2;
+  if (art === 'bahnhof') return 1;
+  return 0;
+}
+
+/** Gemeinsamer Kurzname für eine Nadelgruppe, z. B. „Hamburg“. */
+function gemeinsamerName(namen) {
+  const einzig = [...new Set(namen.filter(Boolean))];
+  if (einzig.length === 0) return 'Ort';
+  if (einzig.length === 1) return einzig[0];
+  const sortiert = [...einzig].sort((a, b) => a.length - b.length);
+  for (const kandidat of sortiert) {
+    if (einzig.every((name) => name === kandidat || name.includes(kandidat))) return kandidat;
+  }
+  const stop = /^(hbf|bahnhof|hauptbahnhof|terminal|hotel|hafen|zum|nach|am|an|der|die|das|in)$/i;
+  const listen = einzig.map((name) => name.split(/[\s/,-]+/).filter((wort) => wort.length >= 3 && !stop.test(wort)));
+  let best = '';
+  for (const wort of listen[0] || []) {
+    if (listen.every((liste) => liste.some((w) => w.toLowerCase() === wort.toLowerCase()))) {
+      if (wort.length > best.length) best = wort;
+    }
+  }
+  return best || sortiert[0];
+}
+
+/** Vereinigt Orte, die auf dem Bildschirm näher als maxPx beieinander liegen. */
+function orteClustern(punkte, maxPx) {
+  if (punkte.length === 0) return [];
+  const eltern = punkte.map((_, i) => i);
+  const find = (i) => {
+    let p = i;
+    while (eltern[p] !== p) p = eltern[p];
+    let k = i;
+    while (eltern[k] !== p) {
+      const n = eltern[k];
+      eltern[k] = p;
+      k = n;
+    }
+    return p;
+  };
+  const unite = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) eltern[rb] = ra;
+  };
+  const grenze = maxPx * maxPx;
+  for (let i = 0; i < punkte.length; i += 1) {
+    for (let j = i + 1; j < punkte.length; j += 1) {
+      const dx = punkte[i].sx - punkte[j].sx;
+      const dy = punkte[i].sy - punkte[j].sy;
+      if (dx * dx + dy * dy <= grenze) unite(i, j);
+    }
+  }
+  const gruppen = new Map();
+  for (let i = 0; i < punkte.length; i += 1) {
+    const wurzel = find(i);
+    if (!gruppen.has(wurzel)) gruppen.set(wurzel, []);
+    gruppen.get(wurzel).push(punkte[i]);
+  }
+  return [...gruppen.values()];
 }
 
 function hausZeichnen(g) {
@@ -521,23 +720,31 @@ function miniZugZeichnen(g) {
 }
 
 function schiffZeichnen(flip, aufSee) {
+  const skala = SCHIFF_BREITE / SCHIFF_VB_W;
   const g = flip.append('g').attr('class', aufSee ? 'schiff auf-see' : 'schiff im-hafen');
-  g.append('path').attr('class', 'kielwasser').attr('d', 'M-46 10 q10 -6 18 0 t16 0');
-  g.append('path').attr('class', 'kielwasser').attr('d', 'M-40 16 q8 -4 14 0 t12 0');
+  // Kielwasser hinter dem Heck (links, Schiff schaut nach rechts).
+  g.append('path').attr('class', 'kielwasser').attr('d', 'M-48 10 q12 -7 22 0 t22 0');
+  g.append('path').attr('class', 'kielwasser').attr('d', 'M-42 17 q10 -5 18 0 t18 0');
+
   const koerper = g.append('g').attr('class', 'schiff-koerper');
-  koerper.append('path').attr('class', 'rumpf').attr('d', 'M-34 4 h58 l10 12 h-78 q4 -6 10 -12 z');
-  koerper.append('rect').attr('class', 'aufbau').attr('x', -16).attr('y', -16).attr('width', 36).attr('height', 20).attr('rx', 4);
-  koerper.append('circle').attr('class', 'fenster').attr('cx', -16).attr('cy', 6).attr('r', 2.4);
-  koerper.append('circle').attr('class', 'fenster').attr('cx', -6).attr('cy', 6).attr('r', 2.4);
-  koerper.append('circle').attr('class', 'fenster').attr('cx', 4).attr('cy', 6).attr('r', 2.4);
-  koerper.append('circle').attr('class', 'fenster').attr('cx', 14).attr('cy', 6).attr('r', 2.4);
-  koerper.append('circle').attr('class', 'schornstein').attr('cx', 8).attr('cy', -24).attr('r', 7);
-  koerper.append('rect').attr('class', 'schornstein-band').attr('x', 2).attr('y', -26).attr('width', 12).attr('height', 4).attr('rx', 1);
-  const rauch = g.append('g').attr('class', 'rauch');
-  rauch.append('circle').attr('cx', 8).attr('cy', -36).attr('r', 4);
-  rauch.append('circle').attr('cx', 14).attr('cy', -46).attr('r', 6);
-  rauch.append('circle').attr('cx', 4).attr('cy', -54).attr('r', 4);
-  ankerZeichnen(g.append('g').attr('class', 'anker-gruppe').attr('transform', 'translate(-24,18) scale(0.7)'));
+  const inhalt = koerper.append('g')
+    .attr('class', 'schiff-svg')
+    .attr('transform', `scale(${skala}) translate(${-SCHIFF_VB_W / 2}, ${-SCHIFF_VB_H / 2})`);
+  if (schiffVorlage) {
+    const ziel = inhalt.node();
+    for (const kind of schiffVorlage.children) {
+      ziel.appendChild(document.importNode(kind, true));
+    }
+  }
+
+  const rauchX = (SCHIFF_SCHORNSTEIN.x - SCHIFF_VB_W / 2) * skala;
+  const rauchY = (SCHIFF_SCHORNSTEIN.y - SCHIFF_VB_H / 2) * skala;
+  const rauch = koerper.append('g').attr('class', 'rauch').attr('transform', `translate(${rauchX},${rauchY})`);
+  rauch.append('circle').attr('cx', 0).attr('cy', -4).attr('r', 3.5);
+  rauch.append('circle').attr('cx', 5).attr('cy', -12).attr('r', 5);
+  rauch.append('circle').attr('cx', -3).attr('cy', -20).attr('r', 3.5);
+
+  ankerZeichnen(g.append('g').attr('class', 'anker-gruppe').attr('transform', 'translate(-22,22) scale(0.75)'));
 }
 
 function zugZeichnen(flip, innen) {

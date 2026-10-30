@@ -227,7 +227,8 @@ async function zeichne() {
       ? kartenText.reisetag.nummer / kartenText.reisetag.gesamt
       : 0;
     reiseFuellung.style.width = `${Math.max(0, Math.min(1, anteil)) * 100}%`;
-    reiseText.textContent = `Reisetag ${kartenText.reisetag.nummer} von ${kartenText.reisetag.gesamt}`;
+    reiseText.textContent = kartenText.reisetag.text
+      || `Reisetag ${kartenText.reisetag.nummer} von ${kartenText.reisetag.gesamt}`;
   } else {
     reiseBalken.hidden = true;
   }

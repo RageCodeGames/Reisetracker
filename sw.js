@@ -4,7 +4,7 @@
  * CACHE_VERSION hochzählen, wenn sich App-Dateien ändern.
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `reisetracker-${CACHE_VERSION}`;
 
 const APP_DATEIEN = [
@@ -17,6 +17,7 @@ const APP_DATEIEN = [
   './js/map.js',
   './manifest.json',
   './icons/icon.svg',
+  './icons/schiff.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',
