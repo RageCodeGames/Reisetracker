@@ -87,6 +87,36 @@ export async function jsonVerschluesseln(wert, key) {
   };
 }
 
+/**
+ * Verschlüsselt Rohbytes. Datei = 12 Byte IV + AES-GCM-Chiffrat.
+ * Für Fotos: kein JSON, keine EXIF, kein Klartext im Repo.
+ */
+export async function bytesVerschluesseln(bytes, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LAENGE));
+  const chiffre = new Uint8Array(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    bytes,
+  ));
+  const paket = new Uint8Array(IV_LAENGE + chiffre.length);
+  paket.set(iv, 0);
+  paket.set(chiffre, IV_LAENGE);
+  return paket;
+}
+
+/** Entschlüsselt 12 Byte IV + Chiffrat zurück zu den Rohbytes. */
+export async function bytesEntschluesseln(paket, key) {
+  if (!(paket instanceof Uint8Array) || paket.length <= IV_LAENGE) {
+    throw new Error('Unbekanntes Datenformat');
+  }
+  const klar = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: paket.subarray(0, IV_LAENGE) },
+    key,
+    paket.subarray(IV_LAENGE),
+  );
+  return new Uint8Array(klar);
+}
+
 /** Entschlüsselt ein Paket { v, iv, daten } zu einem Objekt. Wirft bei falschem Schlüssel. */
 export async function jsonEntschluesseln(paket, key) {
   if (!paket || paket.v !== 1 || typeof paket.iv !== 'string' || typeof paket.daten !== 'string') {

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12b4c8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Reise-Upload">
+  <title>Reise-Upload</title>
+  <link rel="manifest" href="./admin-manifest.json">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <main id="app" class="admin">
+    <section id="passwort-schirm">
+      <p class="marke">Reise-Upload</p>
+      <h1>Grüße von unterwegs</h1>
+      <p class="einleitung">Zum Senden braucht es dasselbe Familien-Passwort wie in der App.</p>
+      <form id="passwort-formular">
+        <label for="passwort">Familien-Passwort eingeben</label>
+        <input id="passwort" name="passwort" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required>
+        <p id="passwort-fehler" class="fehler" role="alert" hidden></p>
+        <button class="primaer" type="submit">Los geht's</button>
+      </form>
+    </section>
+
+    <section id="einricht-schirm" hidden>
+      <p class="marke">Reise-Upload</p>
+      <h1>Einmal einrichten</h1>
+      <p class="einleitung">Name und GitHub-Zugang bleiben nur auf diesem Gerät. Das Token wird nicht angezeigt.</p>
+      <form id="einricht-formular">
+        <label for="einricht-name">Dein Name (steht unter dem Gruß)</label>
+        <input id="einricht-name" name="name" type="text" autocomplete="name" required>
+
+        <label for="einricht-benutzer">GitHub-Benutzer</label>
+        <input id="einricht-benutzer" name="benutzer" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+
+        <label for="einricht-repo">Repo-Name</label>
+        <input id="einricht-repo" name="repo" type="text" autocapitalize="off" spellcheck="false" required>
+
+        <label for="einricht-token">GitHub-Token (Inhalt schreiben)</label>
+        <input id="einricht-token" name="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+
+        <p id="einricht-fehler" class="fehler" role="alert" hidden></p>
+        <button class="primaer" type="submit">Speichern</button>
+      </form>
+      <button id="einricht-abmelden" class="leise" type="button">Abmelden</button>
+    </section>
+
+    <section id="sende-schirm" hidden>
+      <p class="marke">Reise-Upload</p>
+      <h1>Gruß senden</h1>
+
+      <p id="warte-hinweis" class="hinweis warte-hinweis" hidden></p>
+      <button id="jetzt-senden" class="primaer" type="button" hidden>Jetzt senden</button>
+
+      <form id="gruss-formular">
+        <label for="reise-wahl">Reise</label>
+        <select id="reise-wahl" name="reise" required></select>
+
+        <label for="gruss-text">Gruß</label>
+        <textarea id="gruss-text" name="text" rows="4" maxlength="2000" placeholder="Liebe Grüße aus …"></textarea>
+
+        <label for="gruss-fotos">Fotos (höchstens 10, auch aus der Kamera)</label>
+        <input id="gruss-fotos" name="fotos" type="file" accept="image/*" multiple>
+
+        <div id="foto-vorschau" class="foto-vorschau" hidden></div>
+
+        <label class="admin-check">
+          <input id="gruss-standort" name="standort" type="checkbox" checked>
+          Standort mitschicken
+        </label>
+
+        <p id="sende-fehler" class="fehler" role="alert" hidden></p>
+        <p id="sende-ok" class="ok" role="status" hidden></p>
+        <p id="sende-fortschritt" class="fortschritt" role="status" hidden></p>
+        <button id="sende-knopf" class="primaer" type="submit">Senden</button>
+      </form>
+
+      <h2 class="admin-liste-titel">Letzte Grüße</h2>
+      <ul id="update-liste" class="update-liste"></ul>
+      <p id="update-liste-leer" class="hinweis">Noch keine Grüße für diese Reise.</p>
+
+      <button id="abmelden" class="leise" type="button">Abmelden</button>
+    </section>
+  </main>
+  <noscript>
+    <p>Bitte JavaScript einschalten, sonst kann die Seite nichts senden.</p>
+  </noscript>
+  <script type="module" src="./js/admin.js"></script>
+</body>
+</html>

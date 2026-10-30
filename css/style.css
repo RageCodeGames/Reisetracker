@@ -626,6 +626,127 @@ button:disabled {
   }
 }
 
+textarea,
+select {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.8rem;
+  font: inherit;
+  font-size: 1.15em;
+  color: #1a1208;
+  background: #ffffff;
+  border: 3px solid #1a1208;
+  border-radius: 0.6rem;
+}
+
+textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.ok {
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.8rem;
+  font-weight: 700;
+  color: #14532d;
+  background: #d9f5e3;
+  border: 2px solid #14532d;
+  border-radius: 0.5rem;
+}
+
+.fortschritt {
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.8rem;
+  font-weight: 700;
+  background: #fff8e0;
+  border: 2px solid #1a1208;
+  border-radius: 0.5rem;
+}
+
+.admin-check {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 3.2rem;
+  margin: 0 0 1rem;
+  font-weight: 700;
+}
+
+.admin-check input {
+  width: 1.7rem;
+  height: 1.7rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.foto-vorschau {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+}
+
+.foto-vorschau img {
+  display: block;
+  width: 100%;
+  height: 5.5rem;
+  object-fit: cover;
+  border: 3px solid #1a1208;
+  border-radius: 0.5rem;
+  background: #fffdf8;
+}
+
+.warte-hinweis {
+  padding: 0.7rem 0.8rem;
+  font-weight: 700;
+  background: #fff8e0;
+  border: 3px solid #1a1208;
+  border-radius: 0.7rem;
+}
+
+#jetzt-senden {
+  margin-bottom: 1rem;
+}
+
+.admin-liste-titel {
+  margin: 1.4rem 0 0.7rem;
+}
+
+.update-liste {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.update-karte {
+  margin: 0 0 0.7rem;
+  padding: 0.85rem 0.9rem 0.75rem;
+  background: #fffdf8;
+  border: 3px solid #1a1208;
+  border-radius: 1.1rem;
+}
+
+.update-karte p {
+  margin: 0 0 0.45rem;
+}
+
+.update-meta {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.update-karte button {
+  width: 100%;
+  min-height: 3rem;
+  margin-top: 0.35rem;
+  font-weight: 700;
+  color: #6d1010;
+  background: #ffd9d4;
+  border: 3px solid #6d1010;
+  border-radius: 0.7rem;
+}
+
 @media (min-width: 700px) {
   main {
     padding: 2rem 1.5rem 2rem;

@@ -4,7 +4,7 @@
  * CACHE_VERSION hochzählen, wenn sich App-Dateien ändern.
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `reisetracker-${CACHE_VERSION}`;
 
 const APP_DATEIEN = [
@@ -61,6 +61,10 @@ self.addEventListener('fetch', (ereignis) => {
 
   const url = new URL(anfrage.url);
   if (url.origin === self.location.origin && url.pathname.endsWith('/sw.js')) return;
+  // Upload-Seite gehört nicht in den Eltern-Cache.
+  if (istAdminDatei(url)) return;
+  // GitHub-API nicht cachen, sonst wären Grüße veraltet.
+  if (url.origin !== self.location.origin && url.hostname !== 'cdn.jsdelivr.net') return;
 
   if (istNetzwerkZuerst(url)) {
     ereignis.respondWith(netzwerkZuerst(anfrage));
@@ -69,6 +73,13 @@ self.addEventListener('fetch', (ereignis) => {
 
   ereignis.respondWith(cacheZuerst(anfrage));
 });
+
+function istAdminDatei(url) {
+  if (url.origin !== self.location.origin) return false;
+  return url.pathname.endsWith('/admin.html')
+    || url.pathname.endsWith('/js/admin.js')
+    || url.pathname.endsWith('/admin-manifest.json');
+}
 
 function istNetzwerkZuerst(url) {
   if (url.origin !== self.location.origin) return false;
