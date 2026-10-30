@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Comic-Weltkugel mit Schiff">
+  <!-- Quadratisch vollflchig, damit maskable und Apple-Icon deckend bleiben. -->
+  <rect width="512" height="512" fill="#12b4c8"/>
+
+  <!-- Weltkugel -->
+  <g stroke="#1a1208" stroke-linejoin="round" stroke-linecap="round">
+    <circle cx="256" cy="228" r="164" fill="#1ab8cc" stroke-width="14"/>
+
+    <!-- Comic-Kontinente, sandgelb und hellgrn -->
+    <path fill="#f2d48a" stroke-width="8"
+      d="M168 168
+         c18 -38 58 -48 92 -38
+         c28 8 48 28 46 54
+         c-4 28 -28 40 -54 46
+         c-36 8 -72 -8 -92 -28
+         c-12 -12 -10 -22 8 -34z"/>
+    <path fill="#b7d98a" stroke-width="8"
+      d="M214 248
+         c22 -6 48 4 58 22
+         c12 22 4 48 -16 62
+         c-22 16 -52 14 -70 -4
+         c-18 -18 -12 -48 6 -62
+         c8 -8 14 -14 22 -18z"/>
+    <path fill="#f2d48a" stroke-width="8"
+      d="M318 198
+         c28 -8 58 6 70 30
+         c10 22 4 48 -16 58
+         c-22 12 -50 4 -64 -16
+         c-12 -18 -8 -42 10 -72z"/>
+    <path fill="#b7d98a" stroke-width="7"
+      d="M132 250
+         c18 -10 38 -6 48 10
+         c10 16 4 36 -12 44
+         c-18 8 -40 0 -50 -16
+         c-8 -14 -2 -28 14 -38z"/>
+
+    <!-- Wellen-Kringel auf dem Meer -->
+    <path fill="none" stroke="#fffef8" stroke-width="5" opacity="0.85"
+      d="M300 318 q16 -14 32 0 t32 0"/>
+    <circle cx="178" cy="318" r="10" fill="none" stroke="#fffef8" stroke-width="4" opacity="0.8"/>
+    <circle cx="178" cy="318" r="4" fill="none" stroke="#fffef8" stroke-width="3" opacity="0.8"/>
+  </g>
+
+  <!-- Kleines Kreuzfahrtschiff davor, ohne echte Logos -->
+  <g transform="translate(278 372) scale(2.15)" stroke="#1a1208" stroke-linejoin="round" stroke-linecap="round">
+    <path fill="none" stroke="#f7fffe" stroke-width="2.6"
+      d="M-52 22 q12 -8 22 0 t22 0"/>
+    <path fill="#1d4e8f" stroke-width="2.8"
+      d="M-42 2 L-34 -8 H30 L48 6 L42 20 H-38 Q-44 12 -42 2 Z"/>
+    <rect x="-24" y="-22" width="44" height="18" rx="5" fill="#fffdf8" stroke-width="2.5"/>
+    <rect x="-10" y="-34" width="26" height="14" rx="4" fill="#fffdf8" stroke-width="2.4"/>
+    <circle cx="-18" cy="6" r="3.2" fill="#d7f1f6" stroke-width="1.7"/>
+    <circle cx="-4" cy="6" r="3.2" fill="#d7f1f6" stroke-width="1.7"/>
+    <circle cx="10" cy="6" r="3.2" fill="#d7f1f6" stroke-width="1.7"/>
+    <circle cx="24" cy="6" r="3.2" fill="#d7f1f6" stroke-width="1.7"/>
+    <circle cx="8" cy="-44" r="8" fill="#f2d48a" stroke-width="2.3"/>
+    <rect x="1" y="-47" width="14" height="5" rx="1.5" fill="#1d4e8f" stroke="none"/>
+    <circle cx="12" cy="-58" r="5" fill="#f4f7f8" stroke-width="1.5"/>
+    <circle cx="20" cy="-70" r="7" fill="#f4f7f8" stroke-width="1.5"/>
+  </g>
+</svg>

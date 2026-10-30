@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Icons erzeugen</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 1.25rem;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      font-size: 18px;
+      line-height: 1.4;
+      color: #1a1208;
+      background: #f6ead2;
+    }
+    h1 { margin: 0 0 0.6rem; font-size: 1.5rem; }
+    p { margin: 0 0 1rem; max-width: 40rem; }
+    .vorschau {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin: 1rem 0 1.2rem;
+    }
+    figure {
+      margin: 0;
+      padding: 0.6rem;
+      background: #fffdf8;
+      border: 3px solid #1a1208;
+      border-radius: 0.8rem;
+      text-align: center;
+    }
+    figure img, figure canvas {
+      display: block;
+      margin: 0 auto 0.4rem;
+      image-rendering: auto;
+      background:
+        linear-gradient(45deg, #ddd 25%, transparent 25%) 0 0 / 16px 16px,
+        linear-gradient(-45deg, #ddd 25%, transparent 25%) 0 8px / 16px 16px,
+        #fff;
+    }
+    .knöpfe {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      max-width: 22rem;
+    }
+    button {
+      min-height: 3.2rem;
+      padding: 0.5rem 0.8rem;
+      font: inherit;
+      font-weight: 700;
+      color: #1a1208;
+      background: #fff8ee;
+      border: 3px solid #1a1208;
+      border-radius: 0.7rem;
+      cursor: pointer;
+    }
+    .hinweis { color: #5c5348; font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Icons aus dem SVG</h1>
+  <p>Die Seite zeichnet <code>icons/icon.svg</code> auf eine Leinwand. Jeder Knopf lädt eine PNG-Datei. Bitte über Live Server öffnen, nicht als Datei.</p>
+  <div class="vorschau" id="vorschau"></div>
+  <div class="knöpfe" id="knoepfe"></div>
+  <p class="hinweis" id="status">SVG wird geladen …</p>
+
+  <script type="module">
+    const GROESSEN = [
+      { datei: 'icon-192.png', pixel: 192, maskable: false, beschreibung: '192 × 192' },
+      { datei: 'icon-512.png', pixel: 512, maskable: false, beschreibung: '512 × 512' },
+      { datei: 'icon-512-maskable.png', pixel: 512, maskable: true, beschreibung: '512 × 512, maskable' },
+      { datei: 'apple-touch-icon.png', pixel: 180, maskable: false, beschreibung: '180 × 180, Apple' },
+    ];
+
+    const status = document.querySelector('#status');
+    const vorschau = document.querySelector('#vorschau');
+    const knoepfe = document.querySelector('#knoepfe');
+    const bilder = new Map();
+
+    try {
+      const svgText = await fetch(new URL('../icons/icon.svg', import.meta.url)).then((r) => {
+        if (!r.ok) throw new Error('svg');
+        return r.text();
+      });
+      const blob = new Blob([svgText], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const svgBild = await bildLaden(url);
+      URL.revokeObjectURL(url);
+
+      for (const groesse of GROESSEN) {
+        const canvas = zeichnen(svgBild, groesse);
+        const dataUrl = canvas.toDataURL('image/png');
+        bilder.set(groesse.datei, dataUrl.replace(/^data:image\/png;base64,/, ''));
+
+        const figure = document.createElement('figure');
+        const img = document.createElement('img');
+        img.alt = groesse.beschreibung;
+        img.src = dataUrl;
+        img.width = Math.min(groesse.pixel, 192);
+        img.height = Math.min(groesse.pixel, 192);
+        const caption = document.createElement('figcaption');
+        caption.textContent = groesse.beschreibung;
+        figure.append(img, caption);
+        vorschau.append(figure);
+
+        const knopf = document.createElement('button');
+        knopf.type = 'button';
+        knopf.textContent = `${groesse.datei} herunterladen`;
+        knopf.addEventListener('click', () => herunterladen(groesse.datei, dataUrl));
+        knoepfe.append(knopf);
+      }
+      status.textContent = 'Fertig. Die PNGs gehören nach icons/.';
+      window.__icons = Object.fromEntries(bilder);
+      window.__fertig = true;
+    } catch {
+      status.textContent = 'Das SVG konnte nicht geladen werden. Bitte über Live Server öffnen.';
+    }
+
+    function zeichnen(svgBild, groesse) {
+      const canvas = document.createElement('canvas');
+      canvas.width = groesse.pixel;
+      canvas.height = groesse.pixel;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#12b4c8';
+      ctx.fillRect(0, 0, groesse.pixel, groesse.pixel);
+      // Maskable: Inhalt in der sicheren Mitte (80 %), Rand bleibt Meer.
+      const skala = groesse.maskable ? 0.8 : 1;
+      const offset = groesse.pixel * (1 - skala) / 2;
+      ctx.drawImage(svgBild, offset, offset, groesse.pixel * skala, groesse.pixel * skala);
+      return canvas;
+    }
+
+    function bildLaden(src) {
+      return new Promise((ok, fehl) => {
+        const img = new Image();
+        img.onload = () => ok(img);
+        img.onerror = () => fehl(new Error('bild'));
+        img.src = src;
+      });
+    }
+
+    function herunterladen(name, dataUrl) {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = name;
+      a.click();
+    }
+  </script>
+</body>
+</html>

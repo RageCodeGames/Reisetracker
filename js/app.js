@@ -62,6 +62,7 @@ let timer = null;
 let karte = null;
 let karteLaeuft = false;
 let tageGescrolltFuer = null;
+let serviceWorkerNeu = false;
 
 ganzeReiseKnopf.addEventListener('click', () => karte?.ganzeReise());
 woKnopf.addEventListener('click', () => karte?.woSindWir());
@@ -112,6 +113,7 @@ reiseListe.addEventListener('click', async (ereignis) => {
 });
 
 start();
+serviceWorkerAnmelden();
 
 async function start() {
   try {
@@ -470,4 +472,17 @@ function schluesselVergessen() {
   } catch {
     // Privater Modus oder gesperrter Speicher: dann ist nichts zu löschen.
   }
+}
+
+function serviceWorkerAnmelden() {
+  if (!('serviceWorker' in navigator)) return;
+  const adresse = new URL('./sw.js', document.baseURI);
+  navigator.serviceWorker.register(adresse.href).catch(() => {
+    // Ohne HTTPS oder auf file:// gibt es keinen Worker. Die Seite läuft trotzdem.
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (serviceWorkerNeu) return;
+    serviceWorkerNeu = true;
+    location.reload();
+  });
 }
