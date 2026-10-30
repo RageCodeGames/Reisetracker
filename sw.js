@@ -6,7 +6,7 @@
  * CACHE_VERSION hochzählen, wenn sich App-Dateien ändern.
  */
 
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 const CACHE_NAME = `reisetracker-${CACHE_VERSION}`;
 const CACHE_ADMIN = 'reisetracker-admin';
 
@@ -73,7 +73,8 @@ self.addEventListener('fetch', (ereignis) => {
 
   const url = new URL(anfrage.url);
   if (url.origin === self.location.origin && url.pathname.endsWith('/sw.js')) return;
-  // GitHub-API nicht cachen, sonst wären Grüße veraltet.
+  // GitHub-API nie anfassen und nie cachen – Upload braucht immer den aktuellen Stand.
+  if (url.hostname === 'api.github.com') return;
   if (url.origin !== self.location.origin && url.hostname !== 'cdn.jsdelivr.net') return;
 
   if (istAdminDatei(url)) {

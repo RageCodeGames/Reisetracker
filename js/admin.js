@@ -241,10 +241,11 @@ async function grussAbsenden(ereignis) {
   try {
     fortschritt('Fotos werden vorbereitet …');
     const paket = await grussBauen(text, dateien);
-    await paketSenden(paket);
+    const updates = await paketSenden(paket);
     formularLeeren();
     zeige(sendeOk, 'Der Gruß ist unterwegs.');
-    await listeAktualisieren();
+    if (Array.isArray(updates)) listeZeichnen(updates);
+    else await listeAktualisieren();
   } catch (problem) {
     if (istOffline(problem)) {
       try {
@@ -312,29 +313,73 @@ async function grussBauen(text, dateien) {
 }
 
 async function paketSenden(paket) {
-  await paketeSenden([paket]);
+  const updates = await paketeSenden([paket]);
+  return updates;
 }
 
+/** Sendet wartende/neue Grüße. Liefert die Updates der gewählten Reise nach dem Schreiben. */
 async function paketeSenden(pakete) {
-  if (!Array.isArray(pakete) || pakete.length === 0) return;
+  if (!Array.isArray(pakete) || pakete.length === 0) return null;
   if (!navigator.onLine) {
     const problem = new Error('offline');
     problem.paket = pakete[0];
     throw problem;
   }
   const sortiert = [...pakete].sort((a, b) => String(a.eintrag?.zeit || '').localeCompare(String(b.eintrag?.zeit || '')));
+  fortschritt(sortiert.length === 1 ? 'Gruß wird gespeichert …' : `${sortiert.length} Grüße werden gespeichert …`);
+  try {
+    return await mitRefRetry(async (kopf) => githubCommitPaketeBauen(kopf, sortiert));
+  } catch (problem) {
+    if (istOffline(problem)) problem.paket = sortiert[0];
+    throw problem;
+  }
+}
+
+async function githubCommitLoeschen(paket) {
+  return mitRefRetry(async (kopf) => {
+    const liste = await updatesAusCommit(kopf, paket.reiseId);
+    const updates = Array.isArray(liste.updates) ? [...liste.updates] : [];
+    const indexEintrag = updates.findIndex((u) => u.id === paket.eintrag.id);
+    if (indexEintrag < 0) {
+      return { baum: [], updatesNachReise: { [paket.reiseId]: updates } };
+    }
+    const alt = updates[indexEintrag];
+    updates.splice(indexEintrag, 1);
+    const baum = [];
+    for (const foto of alt.fotos || []) {
+      if (foto.datei) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.datei}`));
+      if (foto.klein) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.klein}`));
+    }
+    const paketJson = await jsonVerschluesseln({ updates }, schluessel);
+    const jsonBytes = new TextEncoder().encode(`${JSON.stringify(paketJson)}\n`);
+    const jsonSha = await blobAnlegen(kopf.owner, kopf.repo, jsonBytes);
+    baum.push({
+      path: `daten/${paket.reiseId}/updates.enc.json`,
+      mode: '100644',
+      type: 'blob',
+      sha: jsonSha,
+    });
+    return { baum, updatesNachReise: { [paket.reiseId]: updates } };
+  });
+}
+
+/**
+ * Bei abgelehntem Ref: Ref, Commit und updates.enc.json frisch laden und erneut anwenden.
+ * Erst nach 3 Fehlversuchen die Konflikt-Meldung.
+ */
+async function mitRefRetry(bauen) {
   let letzterFehler = null;
-  for (let versuch = 0; versuch < 4; versuch += 1) {
+  for (let versuch = 0; versuch < 3; versuch += 1) {
     try {
-      fortschritt(sortiert.length === 1 ? 'Gruß wird gespeichert …' : `${sortiert.length} Grüße werden gespeichert …`);
-      await githubCommitPakete(sortiert);
-      return;
-    } catch (problem) {
-      if (istOffline(problem)) {
-        problem.paket = sortiert[0];
-        throw problem;
+      const kopf = await repoKopf();
+      const { baum, updatesNachReise } = await bauen(kopf);
+      if (baum.length > 0) {
+        await baumCommitten(kopf.owner, kopf.repo, kopf.branch, kopf.head, kopf.treeSha, baum);
       }
-      if (istKonflikt(problem) && versuch < 3) {
+      return updatesNachReise?.[gewaehlteId] ?? updatesNachReise?.[Object.keys(updatesNachReise || {})[0]] ?? null;
+    } catch (problem) {
+      if (istOffline(problem)) throw problem;
+      if (istKonflikt(problem) && versuch < 2) {
         letzterFehler = problem;
         continue;
       }
@@ -344,54 +389,22 @@ async function paketeSenden(pakete) {
   throw letzterFehler || new Error('github');
 }
 
-async function githubCommit(paket, loeschen) {
-  if (loeschen) {
-    await githubCommitLoeschen(paket);
-    return;
-  }
-  await githubCommitPakete([paket]);
-}
-
-async function githubCommitLoeschen(paket) {
-  const { owner, repo, branch, head, treeSha } = await repoKopf();
-  const liste = await updatesLaden(owner, repo, branch, paket.reiseId);
-  const updates = Array.isArray(liste.updates) ? [...liste.updates] : [];
-  const indexEintrag = updates.findIndex((u) => u.id === paket.eintrag.id);
-  if (indexEintrag < 0) return;
-  const alt = updates[indexEintrag];
-  updates.splice(indexEintrag, 1);
-  const baum = [];
-  for (const foto of alt.fotos || []) {
-    if (foto.datei) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.datei}`));
-    if (foto.klein) baum.push(dateiLoeschen(`daten/${paket.reiseId}/${foto.klein}`));
-  }
-  const paketJson = await jsonVerschluesseln({ updates }, schluessel);
-  const jsonBytes = new TextEncoder().encode(`${JSON.stringify(paketJson)}\n`);
-  const jsonSha = await blobAnlegen(owner, repo, jsonBytes);
-  baum.push({
-    path: `daten/${paket.reiseId}/updates.enc.json`,
-    mode: '100644',
-    type: 'blob',
-    sha: jsonSha,
-  });
-  await baumCommitten(owner, repo, branch, head, treeSha, baum);
-}
-
-/** Mehrere Grüße (bereits sortiert) in einem Commit. */
-async function githubCommitPakete(pakete) {
-  const { owner, repo, branch, head, treeSha } = await repoKopf();
+/** Mehrere Grüße (bereits sortiert) für einen Commit vorbereiten. */
+async function githubCommitPaketeBauen(kopf, pakete) {
+  const { owner, repo } = kopf;
   const nachReise = new Map();
   for (const paket of pakete) {
     if (!nachReise.has(paket.reiseId)) nachReise.set(paket.reiseId, []);
     nachReise.get(paket.reiseId).push(paket);
   }
   const baum = [];
+  const updatesNachReise = {};
   let fotoGesamt = 0;
   let fotoNr = 0;
   for (const paket of pakete) fotoGesamt += (paket.eintrag?.fotos || []).length;
 
   for (const [reiseId, gruppe] of nachReise) {
-    const liste = await updatesLaden(owner, repo, branch, reiseId);
+    const liste = await updatesAusCommit(kopf, reiseId);
     const updates = Array.isArray(liste.updates) ? [...liste.updates] : [];
     for (const paket of gruppe) {
       if (updates.some((u) => u.id === paket.eintrag.id)) continue;
@@ -411,6 +424,7 @@ async function githubCommitPakete(pakete) {
       }
     }
     updates.sort((a, b) => String(a.zeit || '').localeCompare(String(b.zeit || '')));
+    updatesNachReise[reiseId] = updates;
     const paketJson = await jsonVerschluesseln({ updates }, schluessel);
     const jsonBytes = new TextEncoder().encode(`${JSON.stringify(paketJson)}\n`);
     const jsonSha = await blobAnlegen(owner, repo, jsonBytes);
@@ -422,8 +436,7 @@ async function githubCommitPakete(pakete) {
     });
   }
 
-  if (baum.length === 0) return;
-  await baumCommitten(owner, repo, branch, head, treeSha, baum);
+  return { baum, updatesNachReise };
 }
 
 async function baumCommitten(owner, repo, branch, head, treeSha, baum) {
@@ -445,11 +458,11 @@ function dateiLoeschen(pfad) {
   return { path: pfad, mode: '100644', type: 'blob', sha: null };
 }
 
+/** Aktueller Branch-Stand: Ref → Commit → Tree. Immer frisch, nie aus Cache. */
 async function repoKopf() {
   const owner = speicherLesen(SPEICHER_BENUTZER);
   const repo = speicherLesen(SPEICHER_REPO);
-  const info = await github(`/repos/${owner}/${repo}`);
-  const branch = info.default_branch || 'main';
+  const branch = 'main';
   const ref = await github(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`);
   const head = ref.object?.sha;
   const commit = await github(`/repos/${owner}/${repo}/git/commits/${head}`);
@@ -467,13 +480,21 @@ async function blobAnlegen(owner, repo, bytes) {
   return data.sha;
 }
 
-async function updatesLaden(owner, repo, branch, reiseId) {
+/**
+ * updates.enc.json aus dem aktuellen Commit-Tree lesen (Blob-API),
+ * nicht über Contents/Pages – sonst 1–2 Minuten Verzug.
+ */
+async function updatesAusCommit(kopf, reiseId) {
+  const pfad = `daten/${reiseId}/updates.enc.json`;
   try {
-    const datei = await github(
-      `/repos/${owner}/${repo}/contents/daten/${encodeURIComponent(reiseId)}/updates.enc.json?ref=${encodeURIComponent(branch)}`,
+    const tree = await github(
+      `/repos/${kopf.owner}/${kopf.repo}/git/trees/${kopf.treeSha}?recursive=1`,
     );
-    if (!datei?.content) return { updates: [] };
-    const roh = JSON.parse(atob(String(datei.content).replace(/\s/g, '')));
+    const knoten = (tree.tree || []).find((eintrag) => eintrag.path === pfad && eintrag.type === 'blob');
+    if (!knoten?.sha) return { updates: [] };
+    const blob = await github(`/repos/${kopf.owner}/${kopf.repo}/git/blobs/${knoten.sha}`);
+    if (!blob?.content) return { updates: [] };
+    const roh = JSON.parse(atob(String(blob.content).replace(/\s/g, '')));
     const klar = await jsonEntschluesseln(roh, schluessel);
     if (!klar || !Array.isArray(klar.updates)) return { updates: [] };
     return klar;
@@ -486,8 +507,8 @@ async function updatesLaden(owner, repo, branch, reiseId) {
 async function listeAktualisieren() {
   if (!gewaehlteId || !einrichtungVollstaendig()) return;
   try {
-    const { owner, repo, branch } = await repoKopf();
-    const liste = await updatesLaden(owner, repo, branch, gewaehlteId);
+    const kopf = await repoKopf();
+    const liste = await updatesAusCommit(kopf, gewaehlteId);
     listeZeichnen(liste.updates);
   } catch (problem) {
     if (!istOffline(problem)) {
@@ -524,9 +545,10 @@ async function updateLoeschen(eintrag) {
   try {
     fortschritt('Wird gelöscht …');
     verstecke(sendeFehler);
-    await githubCommit({ reiseId: gewaehlteId, eintrag, blobs: [] }, true);
+    const updates = await githubCommitLoeschen({ reiseId: gewaehlteId, eintrag, blobs: [] });
     zeige(sendeOk, 'Der Gruß ist gelöscht.');
-    await listeAktualisieren();
+    if (Array.isArray(updates)) listeZeichnen(updates);
+    else await listeAktualisieren();
   } catch (problem) {
     zeige(sendeFehler, istOffline(problem)
       ? 'Zum Löschen braucht es Internet.'
@@ -594,10 +616,11 @@ async function warteschlangeSenden(manuell) {
         bytes: new Uint8Array(b.bytes),
       })),
     }));
-    await paketeSenden(pakete);
+    const updates = await paketeSenden(pakete);
     for (const item of liste) await warteschlangeEntfernen(item.id);
     zeige(sendeOk, liste.length === 1 ? 'Der gespeicherte Gruß ist weg.' : 'Die gespeicherten Grüße sind weg.');
-    await listeAktualisieren();
+    if (Array.isArray(updates)) listeZeichnen(updates);
+    else await listeAktualisieren();
   } catch (problem) {
     if (manuell && !istOffline(problem)) zeige(sendeFehler, meldungFuer(problem));
   } finally {
@@ -792,6 +815,7 @@ async function github(pfad, optionen = {}) {
   try {
     antwort = await fetch(`https://api.github.com${pfad}`, {
       method: optionen.method || 'GET',
+      cache: 'no-store',
       headers: {
         Accept: 'application/vnd.github+json',
         Authorization: `Bearer ${token}`,

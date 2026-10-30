@@ -1031,9 +1031,14 @@ textarea {
 }
 
 .update-liste {
-  margin: 0 0 1rem;
+  margin: 0 0 0.45rem;
   padding: 0;
   list-style: none;
+}
+
+.update-liste-hinweis {
+  margin: 0 0 1rem;
+  font-size: 18px;
 }
 
 .update-karte {
