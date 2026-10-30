@@ -77,25 +77,30 @@ export function getStatus(trip, zeitpunkt) {
 
     const letzter = seg.index === plan.length - 1;
     if (letzter && seg.typ === 'ort' && !seg.originalEnde) {
-      return {
-        status: 'nachReise',
-        name: seg.eintrag.name || '',
-        info: seg.eintrag.info || null,
-        seit: seg.originalStart,
-        titel,
-      };
+      return nachReiseStatus(seg.eintrag, seg.originalStart, titel);
     }
     if (seg.typ === 'ort') return ortStatus(seg, plan);
     return fahrtStatus(seg, zeit, seetag);
   }
 
   const letzter = fenster[fenster.length - 1];
+  return nachReiseStatus(
+    letzter?.eintrag || {},
+    letzter?.originalEnde || letzter?.originalStart || null,
+    titel,
+  );
+}
+
+function nachReiseStatus(eintrag, seit, titel) {
   return {
     status: 'nachReise',
-    name: letzter?.eintrag?.name || '',
-    info: letzter?.eintrag?.info || null,
-    seit: letzter?.originalEnde || letzter?.originalStart || null,
+    name: eintrag.name || '',
+    info: eintrag.info || null,
+    seit,
     titel,
+    lat: eintrag.lat,
+    lon: eintrag.lon,
+    ortArt: eintrag.art || '',
   };
 }
 
@@ -180,6 +185,352 @@ export function statusBeschreiben(status, trip) {
   const seetageZeile = seetageSatz(trip);
   if (seetageZeile) zeilen.push(seetageZeile);
   return zeilen;
+}
+
+/**
+ * Große Statuszeile für die Karte, dazu Info und Reisetag.
+ * Nacht gilt von 21 bis 6 Uhr in der Zeitzone der Reise.
+ */
+export function statusKarte(status, trip, eintrag, zeitpunkt) {
+  const zone = trip?.zeitzone || 'Europe/Berlin';
+  const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
+  const nacht = istNacht(zeit, zone);
+  const tag = reisetagStand(eintrag, zeit, zone);
+  let zeile = 'Unterwegs';
+  let info = status?.info || null;
+
+  if (status?.status === 'vorReise') {
+    zeile = countdownZeile(status);
+    info = null;
+  } else if (status?.status === 'nachReise') {
+    zeile = '🏠 Wieder zu Hause!';
+  } else if (status?.status === 'ort') {
+    zeile = ortZeile(status, zeit, zone);
+  } else if (status?.status === 'fahrt') {
+    zeile = fahrtZeile(status, zone);
+  }
+
+  return { zeile, info, reisetag: tag, nacht };
+}
+
+/** true zwischen 21 und 6 Uhr in der angegebenen Zeitzone. */
+export function istNacht(zeitpunkt, zone = 'Europe/Berlin') {
+  const zeit = alsDatum(zeitpunkt);
+  if (!zeit) return false;
+  const stunde = teileInZone(zeit, zone).stunde;
+  return stunde >= 21 || stunde < 6;
+}
+
+/**
+ * Reisetag innerhalb von von/bis, beide Tage mitgezählt.
+ * Vor der Reise ist die Nummer 0, danach die Gesamtzahl.
+ */
+export function reisetagStand(eintrag, zeitpunkt, zone = 'Europe/Berlin') {
+  if (!eintrag?.von || !eintrag?.bis) return null;
+  const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
+  const heute = tagIso(zeit, zone);
+  const gesamt = tageZwischen(eintrag.von, eintrag.bis) + 1;
+  let nummer = tageZwischen(eintrag.von, heute) + 1;
+  if (heute < eintrag.von) nummer = 0;
+  if (heute > eintrag.bis) nummer = gesamt;
+  if (nummer < 0) nummer = 0;
+  if (nummer > gesamt) nummer = gesamt;
+  return { nummer, gesamt };
+}
+
+/** Punkte einer Fahrt: Ort davor, Wegpunkte, Ort danach. */
+export function fahrtPunkte(vonOrt, fahrt, nachOrt) {
+  return routenpunkte({ vonOrt, nachOrt, eintrag: fahrt || {} });
+}
+
+/**
+ * Eine Karte pro Kalendertag von Index-von bis Index-bis.
+ * Seetag, Ort am Mittag, Zeiten und Infos; zustand vergangen/heute/kommend.
+ */
+export function tagesUebersicht(trip, eintrag, zeitpunkt) {
+  if (!eintrag?.von || !eintrag?.bis) return [];
+  const zone = trip?.zeitzone || 'Europe/Berlin';
+  const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
+  const heute = tagIso(zeit, zone);
+  const seetagSet = new Set(seetage(trip));
+  const fenster = zeitfenster(Array.isArray(trip?.plan) ? trip.plan : [], zone);
+  const tage = [];
+  let iso = eintrag.von;
+  for (let n = 0; n < 400; n += 1) {
+    if (iso > eintrag.bis) break;
+    tage.push(tagKarte(iso, heute, seetagSet.has(iso), fenster, zone, trip));
+    const weiter = naechsterKalendertag(iso, zone);
+    if (weiter.iso <= iso) break;
+    iso = weiter.iso;
+  }
+  return tage;
+}
+
+/** Name, Land, Zeiten und Info für das Comic-Popup einer Nadel. */
+export function ortPopup(ort, trip) {
+  if (!ort) return null;
+  const zone = trip?.zeitzone || 'Europe/Berlin';
+  const zeiten = [];
+  if (ort.von) zeiten.push(`Ankunft ${uhrKurz(alsDatum(ort.von), zone)}`);
+  if (ort.bis) zeiten.push(`Abfahrt ${uhrKurz(alsDatum(ort.bis), zone)}`);
+  else if (ort.von && !ort.bis) zeiten.push('Danach zu Hause');
+  return {
+    name: ort.name || '',
+    land: ort.land || '',
+    art: ort.art || '',
+    zeiten: zeiten.join(' · '),
+    info: ort.info || null,
+  };
+}
+
+/**
+ * Teilt die Linie bei einem Zeitanteil 0..1.
+ * Der Schnitt liegt nach Streckenlänge, nicht nach Punktzahl.
+ */
+export function streckeTeilen(punkte, anteil) {
+  if (!punkte?.length) return { gefahren: [], kommend: [] };
+  if (anteil <= 0) return { gefahren: [], kommend: punkte.slice() };
+  if (anteil >= 1) return { gefahren: punkte.slice(), kommend: [] };
+
+  const laengen = [];
+  let gesamt = 0;
+  for (let i = 0; i < punkte.length - 1; i += 1) {
+    const laenge = distanzMeter(punkte[i], punkte[i + 1]);
+    laengen.push(laenge);
+    gesamt += laenge;
+  }
+  if (gesamt === 0) return { gefahren: punkte.slice(), kommend: [] };
+
+  let rest = anteil * gesamt;
+  const gefahren = [punkte[0]];
+  for (let i = 0; i < laengen.length; i += 1) {
+    const a = punkte[i];
+    const b = punkte[i + 1];
+    if (laengen[i] > 0 && rest < laengen[i]) {
+      const t = rest / laengen[i];
+      const mitte = {
+        lat: a.lat + (b.lat - a.lat) * t,
+        lon: a.lon + (b.lon - a.lon) * t,
+      };
+      gefahren.push(mitte);
+      return { gefahren, kommend: [mitte, ...punkte.slice(i + 1)] };
+    }
+    rest -= laengen[i];
+    gefahren.push(b);
+  }
+  return { gefahren: punkte.slice(), kommend: [] };
+}
+
+function tagKarte(iso, heute, istSeetag, fenster, zone, trip) {
+  const start = mitternachtVonIso(iso, zone);
+  const ende = naechsterKalendertag(iso, zone).start;
+  const mittag = new Date(start.getTime() + 12 * 60 * 60 * 1000);
+  const wochentag = new Intl.DateTimeFormat('de-DE', {
+    timeZone: zone,
+    weekday: 'long',
+  }).format(mittag);
+  const datum = new Intl.DateTimeFormat('de-DE', {
+    timeZone: zone,
+    day: 'numeric',
+    month: 'long',
+  }).format(mittag);
+
+  let zustand = 'kommend';
+  if (iso < heute) zustand = 'vergangen';
+  else if (iso === heute) zustand = 'heute';
+
+  const abschnitte = fenster.filter((seg) => abschnittAmTag(seg, start, ende));
+  const titel = tagTitel(istSeetag, abschnitte, trip, mittag);
+  const zeilen = tagZeilen(abschnitte, start, ende, zone, istSeetag);
+
+  return { iso, wochentag, datum, titel, zeilen, zustand, seetag: istSeetag };
+}
+
+function abschnittAmTag(seg, start, ende) {
+  const von = seg.fensterStart;
+  if (!von) return false;
+  const bis = seg.fensterEnde;
+  if (bis && bis <= start) return false;
+  if (von >= ende) return false;
+  return true;
+}
+
+function tagTitel(istSeetag, abschnitte, trip, mittag) {
+  if (istSeetag) return 'Seetag 🌊';
+
+  // Nachmittag zählt stärker als ein kurzer Hotel-Check-out am Morgen.
+  const nachmittag = new Date(mittag.getTime() + 3 * 60 * 60 * 1000);
+  const spaetTitel = titelAusStatus(getStatus(trip, nachmittag));
+  if (spaetTitel) return spaetTitel;
+
+  const mittagTitel = titelAusStatus(getStatus(trip, mittag));
+  if (mittagTitel) return mittagTitel;
+
+  let bester = null;
+  let besteDauer = -1;
+  const tagStart = mittag.getTime() - 12 * 60 * 60 * 1000;
+  const tagEnde = mittag.getTime() + 12 * 60 * 60 * 1000;
+  for (const seg of abschnitte) {
+    if (seg.typ !== 'ort') continue;
+    const von = Math.max(seg.fensterStart?.getTime() || tagStart, tagStart);
+    const bis = Math.min(seg.fensterEnde?.getTime() || tagEnde, tagEnde);
+    const dauer = Math.max(0, bis - von);
+    const prio = { hotel: 5, hafen: 4, zuhause: 3, bahnhof: 1 }[seg.eintrag.art] || 2;
+    const score = dauer + prio * 2 * 3600000;
+    if (score > besteDauer) {
+      besteDauer = score;
+      bester = seg.eintrag.name;
+    }
+  }
+  if (bester) return bester;
+  const fahrt = abschnitte.find((seg) => seg.typ === 'fahrt');
+  if (fahrt?.nachOrt?.name) return `Unterwegs nach ${fahrt.nachOrt.name}`;
+  if (fahrt?.eintrag?.name) return fahrt.eintrag.name;
+  return 'Reisetag';
+}
+
+function titelAusStatus(status) {
+  if (status?.status === 'ort' && status.name) return status.name;
+  if (status?.status === 'fahrt') {
+    if (status.modus === 'schiff') return 'Seetag 🌊';
+    if (status.nach?.name) return `Unterwegs nach ${status.nach.name}`;
+    return status.name || 'Unterwegs';
+  }
+  return null;
+}
+
+function tagZeilen(abschnitte, start, ende, zone, istSeetag) {
+  const zeilen = [];
+  const gesehen = new Set();
+  for (const seg of abschnitte) {
+    if (seg.typ === 'ort') {
+      const ort = seg.eintrag;
+      const uhr = uhrenAmTag(seg.originalStart, seg.originalEnde, start, ende, zone);
+      if (uhr) zeilen.push({ uhr, text: ort.name || 'Ort' });
+      else zeilen.push({ uhr: '', text: ort.name || 'Ort' });
+      if (ort.info && !gesehen.has(ort.info)) {
+        gesehen.add(ort.info);
+        zeilen.push({ uhr: '', text: ort.info });
+      }
+    } else {
+      const fahrt = seg.eintrag;
+      const name = fahrtName(fahrt);
+      const uhr = uhrenAmTag(seg.originalStart, seg.originalEnde, start, ende, zone);
+      zeilen.push({ uhr, text: name });
+      if (fahrt.info && !gesehen.has(fahrt.info)) {
+        gesehen.add(fahrt.info);
+        zeilen.push({ uhr: '', text: fahrt.info });
+      } else if (istSeetag && fahrt.modus === 'schiff' && !fahrt.info) {
+        const text = 'Auf See';
+        if (!gesehen.has(text)) {
+          gesehen.add(text);
+          zeilen.push({ uhr: '', text });
+        }
+      }
+    }
+  }
+  return zeilen;
+}
+
+function fahrtName(fahrt) {
+  if (fahrt.modus === 'schiff') return fahrt.name ? `Schiff: ${fahrt.name}` : 'Schiff';
+  if (fahrt.modus === 'zug') return fahrt.name || 'Zug';
+  if (fahrt.modus === 'sbahn') return fahrt.name || 'S-Bahn';
+  if (fahrt.modus === 'taxi') return fahrt.name || 'Taxi';
+  return fahrt.name || 'Fahrt';
+}
+
+function uhrenAmTag(von, bis, start, ende, zone) {
+  const teile = [];
+  if (von && von >= start && von < ende) teile.push(uhrKurz(von, zone).replace(' Uhr', ''));
+  if (bis && bis > start && bis <= ende) teile.push(uhrKurz(bis, zone).replace(' Uhr', ''));
+  // Ganz im Tag liegende Spanne: von–bis; nur Start oder nur Ende sonst.
+  if (teile.length === 2) return `${teile[0]}–${teile[1]}`;
+  if (teile.length === 1) return teile[0];
+  if (von && bis && von < start && bis > ende) return 'ganzer Tag';
+  return '';
+}
+
+function countdownZeile(status) {
+  if (status?.restMs == null) return '🧳 Die Reise hat noch nicht begonnen.';
+  const volleTage = Math.floor(status.restMs / 86400000);
+  if (volleTage >= 2) return `🧳 Noch ${volleTage} Tage bis zur Abfahrt!`;
+  if (volleTage === 1) return '🧳 Noch 1 Tag bis zur Abfahrt!';
+  const stunden = Math.max(1, Math.round(status.restMs / 3600000));
+  const wort = stunden === 1 ? 'Stunde' : 'Stunden';
+  return `🧳 Noch ${stunden} ${wort} bis zur Abfahrt!`;
+}
+
+function ortZeile(status, zeit, zone) {
+  const uhr = status.bis ? uhrKurz(status.bis, zone) : null;
+  const heute = status.bis && tagIso(zeit, zone) === tagIso(status.bis, zone);
+  if (status.ortArt === 'hotel') {
+    const name = String(status.name || '').replace(/^Hotel\s+/i, '');
+    return `🛏️ Im Hotel ${name}`;
+  }
+  if (status.ortArt === 'hafen') {
+    if (uhr && heute) return `⚓ In ${status.name} – Abfahrt heute ${uhr}`;
+    if (uhr) return `⚓ In ${status.name} – Abfahrt ${uhr}`;
+    return `⚓ In ${status.name}`;
+  }
+  if (status.ortArt === 'bahnhof') {
+    if (uhr && heute) return `🚉 ${status.name} – Weiterfahrt ${uhr}`;
+    if (uhr) return `🚉 ${status.name}`;
+    return `🚉 ${status.name}`;
+  }
+  if (status.ortArt === 'zuhause') {
+    if (uhr && heute) return `🏠 ${status.name} – Abfahrt heute ${uhr}`;
+    if (uhr) return `🏠 ${status.name}`;
+    return `🏠 ${status.name}`;
+  }
+  return `📍 ${status.name}`;
+}
+
+function fahrtZeile(status, zone) {
+  const ankunft = status.an ? uhrKurz(status.an, zone) : null;
+  if (status.modus === 'schiff') {
+    let zeile = '🌊 Auf See';
+    if (status.nach?.name) zeile += ` – unterwegs nach ${status.nach.name}`;
+    if (status.restMs > 0) zeile += `, ${restKurz(status.restMs)}`;
+    return zeile;
+  }
+  if (status.modus === 'zug') {
+    const erstes = String(status.name || '').split(' ')[0];
+    const mitIm = erstes && !/^(nach|mit|zum|zur|heim|in|von)$/i.test(erstes);
+    const kern = mitIm ? `Im ${status.name}` : status.name;
+    return ankunft ? `🚂 ${kern} – Ankunft ${ankunft}` : `🚂 ${kern}`;
+  }
+  if (status.modus === 'sbahn') {
+    return ankunft ? `🚈 ${status.name} – Ankunft ${ankunft}` : `🚈 ${status.name}`;
+  }
+  if (status.modus === 'taxi') {
+    return ankunft ? `🚕 ${status.name} – Ankunft ${ankunft}` : `🚕 ${status.name}`;
+  }
+  return status.name || 'Unterwegs';
+}
+
+function restKurz(ms) {
+  const minuten = Math.max(1, Math.round(ms / 60000));
+  if (minuten < 60) return `noch ca. ${minuten} Min.`;
+  const stunden = Math.max(1, Math.round(ms / 3600000));
+  return `noch ca. ${stunden} Std.`;
+}
+
+function uhrKurz(date, zone) {
+  const text = new Intl.DateTimeFormat('de-DE', {
+    timeZone: zone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+  return `${text} Uhr`;
+}
+
+function tageZwischen(vonIso, bisIso) {
+  const [vj, vm, vt] = String(vonIso).split('-').map(Number);
+  const [bj, bm, bt] = String(bisIso).split('-').map(Number);
+  const von = Date.UTC(vj, vm - 1, vt);
+  const bis = Date.UTC(bj, bm - 1, bt);
+  return Math.round((bis - von) / 86400000);
 }
 
 /**

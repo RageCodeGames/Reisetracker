@@ -1,4 +1,20 @@
-/* Hochformat zuerst, große Schrift, hoher Kontrast. */
+/* Hochformat zuerst, große Schrift, hoher Kontrast. Fredoka von jsDelivr, Version fest. */
+
+@font-face {
+  font-family: "Fredoka";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/fontsource/fonts/fredoka@5.2.8/latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Fredoka";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/fontsource/fonts/fredoka@5.2.8/latin-700-normal.woff2") format("woff2");
+}
 
 html {
   color-scheme: light;
@@ -17,11 +33,11 @@ html {
 
 body {
   margin: 0;
-  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  font-family: "Fredoka", "Segoe UI", "Helvetica Neue", sans-serif;
   font-size: 20px;
   line-height: 1.45;
   color: #1a1208;
-  background: #fff8ee;
+  background: #f6ead2;
 }
 
 main {
@@ -34,9 +50,15 @@ main {
 }
 
 h1 {
-  margin: 0.2rem 0 0.8rem;
-  font-size: 2rem;
+  margin: 0.2rem 0 0.45rem;
+  font-size: 1.7rem;
   line-height: 1.2;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.25;
 }
 
 p {
@@ -138,14 +160,468 @@ button:disabled {
   flex-direction: column;
 }
 
-#status-text p:first-child {
-  font-size: 1.35rem;
+.status-karte {
+  margin: 0 0 0.8rem;
+  padding: 0.85rem 0.9rem 0.75rem;
+  background: #fffdf8;
+  border: 3px solid #1a1208;
+  border-radius: 1.1rem;
+}
+
+.status-karte h2 {
+  margin-bottom: 0.35rem;
+}
+
+#status-info {
+  margin-bottom: 0.7rem;
+}
+
+.reise-balken {
+  position: relative;
+  height: 2.3rem;
+  overflow: hidden;
+  background: #fffdf8;
+  border: 3px solid #1a1208;
+  border-radius: 999px;
+}
+
+.reise-balken-fuellung {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  background: #f0b429;
+}
+
+.reise-balken p {
+  position: relative;
+  margin: 0;
+  font-size: 18px;
   font-weight: 700;
+  line-height: 1.9rem;
+  text-align: center;
+}
+
+.karte-rahmen {
+  position: relative;
+  margin-bottom: 0.9rem;
+  overflow: hidden;
+  background: #f6ead2;
+  border: 3px solid #3a2a1a;
+  border-radius: 1.2rem;
+}
+
+#karte {
+  min-height: 18rem;
+}
+
+.karte-fehler {
+  margin: 0;
+  padding: 1rem;
+  font-weight: 700;
+}
+
+.karten-knopfleiste {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  left: 0.45rem;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.karten-knopf {
+  min-height: 3.2rem;
+  padding: 0.35rem 0.4rem;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1a1208;
+  background: #fff8ee;
+  border: 3px solid #1a1208;
+  border-radius: 0.75rem;
+}
+
+.reise-karte {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  background: #f6ead2;
+}
+
+.meer { fill: #12b4c8; }
+.reise-karte.nacht .meer { fill: #0c4a58; }
+
+.welle {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.wellen-schleier {
+  animation: wellen-schieben 16s linear infinite;
+}
+
+.land {
+  stroke: #3a2a1a;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.land-sand { fill: #f2d48a; }
+.land-gruen { fill: #b7d98a; }
+.reise-karte.nacht .land-sand { fill: #6d6144; }
+.reise-karte.nacht .land-gruen { fill: #4e6844; }
+
+.route {
+  fill: none;
+  stroke-width: 5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.route-schiff { stroke: #1d4e8f; }
+.route-zug { stroke: #d21f1f; }
+.route-grau { stroke: #4b5563; }
+.route-kommend { stroke-dasharray: 9 8; }
+
+.nadel-kopf {
+  fill: #fffdf8;
+  stroke: #1a1208;
+  stroke-width: 3;
+}
+
+.nadel-ring {
+  fill: none;
+  stroke: #d21f1f;
+  stroke-width: 3;
+}
+
+.nadel-schild {
+  fill: #fffdf8;
+  stroke: #1a1208;
+  stroke-width: 2;
+}
+
+.nadel-name {
+  font-family: "Fredoka", "Segoe UI", sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  fill: #1a1208;
+}
+
+.haus { fill: #f2d48a; stroke: #1a1208; stroke-width: 2; stroke-linejoin: round; }
+.tuer { fill: #1a1208; }
+.bett { fill: #7eb6d9; stroke: #1a1208; stroke-width: 2; }
+.kissen { fill: #fffdf8; stroke: #1a1208; stroke-width: 1.5; }
+.bett-fuss { fill: none; stroke: #1a1208; stroke-width: 2; stroke-linecap: round; }
+.anker { fill: none; stroke: #1a1208; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.mini-zug, .zug-huelle { fill: #e23d3d; stroke: #1a1208; stroke-width: 2; }
+.reise-karte.nacht .zug-huelle { fill: #24306e; }
+
+.rumpf { fill: #1d4e8f; stroke: #1a1208; stroke-width: 2.5; stroke-linejoin: round; }
+.aufbau { fill: #fffdf8; stroke: #1a1208; stroke-width: 2.5; }
+.schornstein { fill: #f2d48a; stroke: #1a1208; stroke-width: 2; }
+.schornstein-band { fill: #1d4e8f; }
+.fenster { fill: #d7f1f6; stroke: #1a1208; stroke-width: 1.5; }
+.reise-karte.nacht .fenster { fill: #ffe14a; }
+.rad { fill: #1a1208; }
+.kielwasser { fill: none; stroke: #f7fffe; stroke-width: 2.5; stroke-linecap: round; }
+.rauch circle { fill: #f4f7f8; }
+.sbahn-huelle { fill: #5c6b7a; stroke: #1a1208; stroke-width: 2.5; }
+.strom { fill: none; stroke: #1a1208; stroke-width: 2; }
+.auto { fill: #f6d34d; stroke: #1a1208; stroke-width: 2.5; stroke-linejoin: round; }
+.haut { fill: #f3c7a1; stroke: #1a1208; stroke-width: 2; }
+.kleid { fill: #3d7ea6; stroke: #1a1208; stroke-width: 2; stroke-linejoin: round; }
+.bein { fill: none; stroke: #1a1208; stroke-width: 2; stroke-linecap: round; }
+.koffer { fill: #c47a3a; stroke: #1a1208; stroke-width: 2; }
+.koffer-griff { fill: none; stroke: #1a1208; stroke-width: 2; }
+
+.haken-kreis { fill: #1f7a3a; stroke: #1a1208; stroke-width: 2; }
+.haken { fill: none; stroke: #fffdf8; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+
+.zzz {
+  font-family: "Fredoka", "Segoe UI", sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  fill: #1a1208;
+  opacity: 0;
+}
+
+.reise-karte.nacht .zzz,
+.zzz-sichtbar { opacity: 1; }
+
+.nacht-deko { display: none; }
+.reise-karte.nacht .nacht-deko { display: block; }
+.mond { fill: #ffe9a0; stroke: #1a1208; stroke-width: 2; }
+.stern { fill: #fff8ee; }
+
+.moewe { pointer-events: none; }
+.fluegel { fill: none; stroke: #1a1208; stroke-width: 2.4; stroke-linecap: round; }
+
+.im-hafen .kielwasser,
+.im-hafen .rauch { display: none; }
+.auf-see .anker-gruppe { display: none; }
+
+.auf-see .schiff-koerper {
+  transform-origin: 8px 6px;
+  animation: schaukeln 3.2s ease-in-out infinite;
+}
+
+.rauch circle { animation: rauch-steigen 2.8s ease-out infinite; }
+.rauch circle:nth-child(2) { animation-delay: 0.45s; }
+.rauch circle:nth-child(3) { animation-delay: 0.9s; }
+
+.moewe-1 { animation: moewe-flug 26s linear infinite; }
+.moewe-2 { animation: moewe-flug 26s linear infinite; animation-delay: -13s; }
+.fluegel-links, .fluegel-rechts { transform-box: fill-box; transform-origin: center; animation: fluegel 0.7s ease-in-out infinite; }
+.fluegel-rechts { animation-delay: 0.08s; }
+
+.tage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: 0 0 1rem;
+}
+
+.tag-karte {
+  margin: 0;
+  padding: 0.85rem 0.9rem 0.75rem;
+  background: #fffdf8;
+  border: 3px solid #1a1208;
+  border-radius: 1.1rem;
+}
+
+.tag-karte.vergangen {
+  color: #5c5348;
+  background: #ebe3d2;
+  border-color: #8a7f6e;
+}
+
+.tag-karte.heute {
+  background: #fff8e0;
+  border-color: #1a1208;
+  box-shadow: 0 0 0 3px #f0b429;
+}
+
+.tag-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.tag-datum {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.tag-titel {
+  margin: 0 0 0.45rem;
+  font-size: 1.35rem;
+  line-height: 1.25;
+}
+
+.tag-karte.vergangen .tag-titel::after {
+  content: " ✔";
+  color: #1f7a3a;
+}
+
+.tag-zeilen {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag-zeilen li {
+  display: grid;
+  grid-template-columns: 5.6rem 1fr;
+  gap: 0.35rem 0.55rem;
+  margin: 0 0 0.35rem;
+  font-size: 18px;
+}
+
+.tag-zeilen .ohne-uhr {
+  grid-template-columns: 1fr;
+  color: #3a2a1a;
+}
+
+.tag-karte.vergangen .tag-zeilen .ohne-uhr {
+  color: #5c5348;
+}
+
+.tag-uhr {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.reise-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+}
+
+.link-knopf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.4rem;
+  padding: 0.6rem 1rem;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  color: #1a1208;
+  background: #fff8ee;
+  border: 3px solid #1a1208;
+  border-radius: 0.85rem;
+}
+
+.andere-reisen {
+  margin: 0 0 0.9rem;
+  font-size: 18px;
+}
+
+.andere-reisen summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #3a2a1a;
+}
+
+.reise-liste {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reise-liste button {
+  width: 100%;
+  min-height: 3rem;
+  margin-bottom: 0.4rem;
+  padding: 0.45rem 0.7rem;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  color: #1a1208;
+  background: #fffdf8;
+  border: 2px solid #1a1208;
+  border-radius: 0.65rem;
+}
+
+.reise-liste button[aria-current="true"] {
+  background: #ffe9a0;
+  border-width: 3px;
+}
+
+.ort-popup {
+  width: min(22rem, calc(100vw - 1.5rem));
+  margin: auto;
+  padding: 0;
+  border: 3px solid #1a1208;
+  border-radius: 1.2rem;
+  background: #fffdf8;
+  box-shadow: 0 12px 0 #1a1208;
+}
+
+.ort-popup::backdrop {
+  background: rgba(26, 18, 8, 0.45);
+}
+
+.ort-popup-innen {
+  position: relative;
+  margin: 0;
+  padding: 1.1rem 1rem 1rem;
+}
+
+.ort-popup-schliessen {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0;
+  font-size: 1.7rem;
+  line-height: 1;
+  color: #1a1208;
+  background: #ffe9a0;
+  border: 3px solid #1a1208;
+  border-radius: 999px;
+}
+
+.ort-popup h2 {
+  margin: 0 2.4rem 0.35rem 0;
+  font-size: 1.55rem;
+}
+
+.ort-popup-land,
+.ort-popup-zeiten,
+.ort-popup-info {
+  margin: 0 0 0.45rem;
+  font-size: 18px;
+}
+
+.ort-popup-land {
+  font-weight: 700;
+  color: #3a2a1a;
+}
+
+.ort-popup-info {
+  margin-bottom: 0;
 }
 
 .hinweis {
   margin-top: 0.6rem;
   font-size: 18px;
+}
+
+@keyframes wellen-schieben {
+  to { transform: translate(84px, 26px); }
+}
+
+@keyframes schaukeln {
+  0%, 100% { transform: rotate(4deg); }
+  50% { transform: rotate(-5deg); }
+}
+
+@keyframes rauch-steigen {
+  0% { transform: translate(0, 2px); opacity: 0; }
+  25% { opacity: 0.85; }
+  100% { transform: translate(8px, -18px); opacity: 0; }
+}
+
+@keyframes moewe-flug {
+  0% { transform: translate(-70px, 36px); opacity: 0; }
+  8% { opacity: 1; }
+  38% { transform: translate(92vw, 78px); opacity: 1; }
+  46%, 100% { transform: translate(92vw, 90px); opacity: 0; }
+}
+
+@keyframes fluegel {
+  50% { transform: rotate(-16deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wellen-schleier,
+  .auf-see .schiff-koerper,
+  .rauch circle,
+  .moewe-1,
+  .moewe-2,
+  .fluegel-links,
+  .fluegel-rechts {
+    animation: none;
+  }
 }
 
 @media (min-width: 700px) {

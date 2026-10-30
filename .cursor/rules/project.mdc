@@ -11,7 +11,8 @@ alwaysApply: true
 - Datenschutz: Das Repo ist öffentlich. Reisedaten niemals unverschlüsselt ins Repo. Klartext nur in `privat/` (wird nicht hochgeladen). Die App liest nur verschlüsselte Dateien aus `daten/`. Dateien in `privat/` niemals verändern, verschieben oder kopieren.
 - Zielgruppe: ältere Menschen am Handy. Schrift mindestens 18px, hoher Kontrast, alles auf Deutsch, Hochformat zuerst.
 - Kommentare auf Deutsch.
-- Vor Änderungen die betroffenen Dateien lesen. Nach jedem Schritt anhalten, geänderte Dateien auflisten und auf „weiter“ warten.
+- Alle Punkte eines Prompts am Stück umsetzen. Am Ende geänderte Dateien
+  auflisten und kurz sagen, wie ich es teste. Nicht nach "weiter" fragen.
 
 ```html
 <script type="module" src="./js/app.js"></script>

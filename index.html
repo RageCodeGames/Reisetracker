@@ -25,10 +25,45 @@
       <p class="marke">Reisetracker</p>
       <h1 id="reise-titel"></h1>
       <p id="reise-untertitel" hidden></p>
-      <div id="status-text"></div>
+      <article class="status-karte" aria-live="polite">
+        <h2 id="status-zeile"></h2>
+        <p id="status-info" hidden></p>
+        <div id="reise-balken" class="reise-balken">
+          <div id="reise-balken-fuellung" class="reise-balken-fuellung"></div>
+          <p id="reise-balken-text"></p>
+        </div>
+      </article>
+      <div class="karte-rahmen">
+        <div id="karte"></div>
+        <p id="karte-fehler" class="karte-fehler" hidden>Die Karte konnte nicht geladen werden.</p>
+        <div class="karten-knopfleiste">
+          <button id="ganze-reise" class="karten-knopf" type="button">🗺️ Ganze Reise</button>
+          <button id="wo-sind-wir" class="karten-knopf" type="button">📍 Wo sind wir?</button>
+        </div>
+      </div>
+
+      <section id="tage" class="tage" aria-label="Tagesübersicht"></section>
+
+      <nav id="reise-links" class="reise-links" aria-label="Links zur Reise" hidden></nav>
+
+      <details id="andere-reisen" class="andere-reisen" hidden>
+        <summary>Andere Reisen</summary>
+        <ul id="reise-liste" class="reise-liste"></ul>
+      </details>
+
       <p id="merken-hinweis" class="hinweis" hidden>Auf diesem Gerät kann ich mir den Schlüssel nicht merken. Beim nächsten Besuch bitte das Passwort neu eingeben.</p>
       <button id="abmelden" class="leise" type="button">Abmelden</button>
     </section>
+
+    <dialog id="ort-popup" class="ort-popup">
+      <form method="dialog" class="ort-popup-innen">
+        <button class="ort-popup-schliessen" value="cancel" type="submit" aria-label="Schließen">×</button>
+        <h2 id="ort-popup-name"></h2>
+        <p id="ort-popup-land" class="ort-popup-land" hidden></p>
+        <p id="ort-popup-zeiten" class="ort-popup-zeiten" hidden></p>
+        <p id="ort-popup-info" class="ort-popup-info" hidden></p>
+      </form>
+    </dialog>
   </main>
   <noscript>
     <p>Bitte JavaScript einschalten, sonst kann die Seite nichts anzeigen.</p>
