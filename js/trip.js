@@ -40,8 +40,8 @@ export function aktiveReise(index, zeitpunkt) {
 
 /**
  * Status zum Zeitpunkt: vorReise, ort, fahrt oder nachReise.
- * Ein führender Ort ohne "von" gilt ab der Mitternacht seines Tages
- * (in der Zeitzone der Reise). Davor ist es der Countdown.
+ * vorReise gilt bis zum "ab" der ersten Fahrt. Der erste Ort (Zuhause)
+ * zählt bis dahin nicht als Aufenthalt.
  * Ein letzter Ort ohne "bis" ist das Ende: nachReise.
  */
 export function getStatus(trip, zeitpunkt) {
@@ -58,12 +58,12 @@ export function getStatus(trip, zeitpunkt) {
     return { status: 'vorReise', ziel: null, restMs: null, titel };
   }
 
-  const ersterStart = fenster[0].fensterStart;
-  if (ersterStart && zeit < ersterStart) {
+  const abfahrt = ersteFahrtAb(plan) || fenster[0].fensterStart;
+  if (abfahrt && zeit < abfahrt) {
     return {
       status: 'vorReise',
-      ziel: ersterStart,
-      restMs: ersterStart.getTime() - zeit.getTime(),
+      ziel: abfahrt,
+      restMs: abfahrt.getTime() - zeit.getTime(),
       titel,
     };
   }
@@ -195,12 +195,17 @@ export function statusKarte(status, trip, eintrag, zeitpunkt) {
   const zone = trip?.zeitzone || 'Europe/Berlin';
   const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
   const nacht = istNacht(zeit, zone);
-  const tag = reisetagStand(eintrag, zeit, zone);
+  const tag = reisetagStand(
+    eintrag,
+    zeit,
+    zone,
+    status?.status === 'vorReise' ? status.ziel : null,
+  );
   let zeile = 'Unterwegs';
   let info = status?.info || null;
 
   if (status?.status === 'vorReise') {
-    zeile = countdownZeile(status);
+    zeile = countdownZeile(status, zone);
     info = null;
   } else if (status?.status === 'nachReise') {
     zeile = '🏠 Wieder zu Hause!';
@@ -223,9 +228,10 @@ export function istNacht(zeitpunkt, zone = 'Europe/Berlin') {
 
 /**
  * Reisetag innerhalb von von/bis, beide Tage mitgezählt.
- * Vor der Reise ist die Nummer 0, danach die Gesamtzahl.
+ * Vor der ersten Fahrt (abfahrt) bleibt der Balken bei 0
+ * und nennt Datum und Uhrzeit der Abfahrt.
  */
-export function reisetagStand(eintrag, zeitpunkt, zone = 'Europe/Berlin') {
+export function reisetagStand(eintrag, zeitpunkt, zone = 'Europe/Berlin', abfahrt = null) {
   if (!eintrag?.von || !eintrag?.bis) return null;
   const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
   const heute = tagIso(zeit, zone);
@@ -233,20 +239,37 @@ export function reisetagStand(eintrag, zeitpunkt, zone = 'Europe/Berlin') {
   let nummer = tageZwischen(eintrag.von, heute) + 1;
   if (heute < eintrag.von) nummer = 0;
   if (heute > eintrag.bis) nummer = gesamt;
+  if (abfahrt instanceof Date && !Number.isNaN(abfahrt.getTime()) && zeit < abfahrt) {
+    nummer = 0;
+  }
   if (nummer < 0) nummer = 0;
   if (nummer > gesamt) nummer = gesamt;
   let text = `Reisetag ${nummer} von ${gesamt}`;
   if (nummer === 0) {
-    const mittag = new Date(mitternachtVonIso(eintrag.von, zone).getTime() + 12 * 60 * 60 * 1000);
-    const datum = new Intl.DateTimeFormat('de-DE', {
-      timeZone: zone,
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }).format(mittag);
-    text = `Abfahrt am ${datum}`;
+    text = abfahrtText(abfahrt, eintrag.von, zone);
   }
   return { nummer, gesamt, text };
+}
+
+function abfahrtText(abfahrt, vonIso, zone) {
+  const zeit = abfahrt instanceof Date && !Number.isNaN(abfahrt.getTime())
+    ? abfahrt
+    : new Date(mitternachtVonIso(vonIso, zone).getTime() + 12 * 60 * 60 * 1000);
+  const datum = new Intl.DateTimeFormat('de-DE', {
+    timeZone: zone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(zeit);
+  if (!(abfahrt instanceof Date) || Number.isNaN(abfahrt.getTime())) {
+    return `Abfahrt am ${datum}`;
+  }
+  const uhr = new Intl.DateTimeFormat('de-DE', {
+    timeZone: zone,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(zeit);
+  return `Abfahrt am ${datum} um ${uhr} Uhr`;
 }
 
 /** Punkte einer Fahrt: Ort davor, Wegpunkte, Ort danach. */
@@ -462,14 +485,25 @@ function uhrenAmTag(von, bis, start, ende, zone) {
   return '';
 }
 
-function countdownZeile(status) {
-  if (status?.restMs == null) return '🧳 Die Reise hat noch nicht begonnen.';
-  const volleTage = Math.floor(status.restMs / 86400000);
-  if (volleTage >= 2) return `🧳 Noch ${volleTage} Tage bis zur Abfahrt!`;
-  if (volleTage === 1) return '🧳 Noch 1 Tag bis zur Abfahrt!';
-  const stunden = Math.max(1, Math.round(status.restMs / 3600000));
-  const wort = stunden === 1 ? 'Stunde' : 'Stunden';
-  return `🧳 Noch ${stunden} ${wort} bis zur Abfahrt!`;
+function countdownZeile(status, zone = 'Europe/Berlin') {
+  if (status?.restMs == null || !status.ziel) return '🧳 Die Reise hat noch nicht begonnen.';
+  const restMs = Math.max(0, status.restMs);
+  const ziel = status.ziel;
+  const jetzt = new Date(ziel.getTime() - restMs);
+  const heute = tagIso(jetzt, zone);
+  const abfahrtTag = tagIso(ziel, zone);
+  const uhr = uhrKurz(ziel, zone);
+  if (heute < abfahrtTag) {
+    const tage = tageZwischen(heute, abfahrtTag);
+    if (tage > 1) return `🧳 Noch ${tage} Tage bis zur Abfahrt!`;
+    return `🧳 Morgen geht's los! Abfahrt ${uhr}`;
+  }
+  if (restMs < 3600000) {
+    const minuten = Math.max(1, Math.round(restMs / 60000));
+    return `🧳 Gleich geht's los! Noch ${minuten} Min.`;
+  }
+  const stunden = Math.max(1, Math.round(restMs / 3600000));
+  return `🧳 Heute geht's los! Abfahrt ${uhr} – noch ${stunden} Std.`;
 }
 
 function ortZeile(status, zeit, zone) {
@@ -671,6 +705,16 @@ function zeitfenster(plan, zone) {
     else if (start) cursor = start;
     return { ...seg, fensterStart: start, fensterEnde: ende };
   });
+}
+
+/** Abfahrt der ersten Fahrt im Plan, sonst null. */
+function ersteFahrtAb(plan) {
+  for (const eintrag of plan || []) {
+    if (eintrag?.typ !== 'fahrt') continue;
+    const ab = alsDatum(eintrag.ab);
+    if (ab) return ab;
+  }
+  return null;
 }
 
 function ersterZeitstempel(plan) {

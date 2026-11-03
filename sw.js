@@ -6,7 +6,7 @@
  * CACHE_VERSION hochzählen, wenn sich App-Dateien ändern.
  */
 
-const CACHE_VERSION = 'v9';
+const CACHE_VERSION = 'v10';
 const CACHE_NAME = `reisetracker-${CACHE_VERSION}`;
 const CACHE_ADMIN = 'reisetracker-admin';
 
