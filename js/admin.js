@@ -14,7 +14,15 @@ import {
   schluesselAlsRohdaten,
   schluesselAusRohdaten,
 } from './crypto.js';
-import { aktiveReise } from './trip.js';
+import { aktiveReise, getStatus } from './trip.js';
+import {
+  ortAusStatus,
+  ortFuerSituation,
+  pushSammelText,
+  pushTextWaehlen,
+  PUSH_TEST_OPTIONEN,
+  situationAusStatus,
+} from './push-texte.js';
 
 const SPEICHER_SCHLUESSEL = 'reisetracker.schluessel';
 const SPEICHER_NAME = 'reisetracker.admin.name';
@@ -58,11 +66,14 @@ const einrichtNotify = document.querySelector('#einricht-notify');
 const einrichtPushToken = document.querySelector('#einricht-push-token');
 const sendeNotify = document.querySelector('#sende-notify');
 const sendePushToken = document.querySelector('#sende-push-token');
+const pushTestKasten = document.querySelector('#push-test-kasten');
 const pushTest = document.querySelector('#push-test');
+const pushTestSituation = document.querySelector('#push-test-situation');
 const pushMeldung = document.querySelector('#push-meldung');
 
 let familyToken = '';
 let notifyLaeuft = false;
+const tripCache = new Map();
 
 let konfig = null;
 let schluessel = null;
@@ -199,10 +210,21 @@ function sendeSchirmZeigen() {
   reisenFuellen();
   warteschlangeAnzeigen();
   pushTokenAnzeigen();
-  pushTest.hidden = !pushWorkerOk();
+  pushTestFuellen();
+  if (pushTestKasten) pushTestKasten.hidden = !pushWorkerOk();
   listeAktualisieren().catch(() => {});
   sendeVersuch(false);
   notifyWartendFortsetzen().catch(() => {});
+}
+
+function pushTestFuellen() {
+  if (!pushTestSituation || pushTestSituation.options.length > 0) return;
+  for (const option of PUSH_TEST_OPTIONEN) {
+    const el = document.createElement('option');
+    el.value = option.id;
+    el.textContent = option.label;
+    pushTestSituation.append(el);
+  }
 }
 
 function reisenFuellen() {
@@ -272,7 +294,12 @@ async function grussAbsenden(ereignis) {
     zeige(sendeOk, 'Der Gruß ist unterwegs.');
     if (Array.isArray(updates)) listeZeichnen(updates);
     else await listeAktualisieren();
-    notifyNachUpload(gewaehlteId, speicherLesen(SPEICHER_NAME) || '').catch(() => {});
+    notifyNachUpload([{
+      reiseId: gewaehlteId,
+      zeit: paket.eintrag.zeit,
+      von: paket.eintrag.von || speicherLesen(SPEICHER_NAME) || '',
+      fotos: (paket.eintrag.fotos || []).length,
+    }]).catch(() => {});
   } catch (problem) {
     if (istOffline(problem)) {
       try {
@@ -648,8 +675,13 @@ async function warteschlangeSenden(manuell) {
     zeige(sendeOk, liste.length === 1 ? 'Der gespeicherte Gruß ist weg.' : 'Die gespeicherten Grüße sind weg.');
     if (Array.isArray(updates)) listeZeichnen(updates);
     else await listeAktualisieren();
-    const name = liste[0]?.eintrag?.von || speicherLesen(SPEICHER_NAME) || '';
-    notifyNachUpload(liste[0]?.reiseId || gewaehlteId, name).catch(() => {});
+    const gruesse = liste.map((item) => ({
+      reiseId: item.reiseId || gewaehlteId,
+      zeit: item.eintrag?.zeit,
+      von: item.eintrag?.von || speicherLesen(SPEICHER_NAME) || '',
+      fotos: (item.eintrag?.fotos || []).length,
+    }));
+    notifyNachUpload(gruesse).catch(() => {});
   } catch (problem) {
     if (manuell && !istOffline(problem)) zeige(sendeFehler, meldungFuer(problem));
   } finally {
@@ -914,8 +946,18 @@ async function notifyTesten() {
   if (!pushWorkerOk()) return;
   try {
     fortschritt('Benachrichtigung wird verschickt …');
-    const ergebnis = await notifySenden('📸 Neuer Gruß von Test', 'Jetzt im Reisetracker ansehen');
+    const situation = pushTestSituation?.value || 'vorReise';
+    const name = speicherLesen(SPEICHER_NAME) || 'Test';
+    const trip = await tripFuerReise(gewaehlteId);
+    const ort = ortFuerSituation(trip, situation);
+    const nachricht = pushTextWaehlen(situation, {
+      name,
+      fotoZahl: 2,
+      ort,
+    });
+    const ergebnis = await notifySenden(nachricht.titel, nachricht.text);
     zeige(sendeOk, `Familie benachrichtigt (${ergebnis.gesendet} Geräte)`);
+    zeige(pushMeldung, `${nachricht.titel} — ${nachricht.text}`);
   } catch (problem) {
     zeige(sendeFehler, notifyMeldung(problem));
   } finally {
@@ -923,15 +965,62 @@ async function notifyTesten() {
   }
 }
 
-async function notifyNachUpload(reiseId, von) {
-  if (!pushWorkerOk() || !reiseId) return;
+/**
+ * Nach Upload: eine Benachrichtigung vorbereiten.
+ * gruesse: [{ reiseId, zeit, von, fotos }, ...] – zeit = Tippen auf Senden.
+ */
+async function notifyNachUpload(gruesse) {
+  if (!pushWorkerOk() || !Array.isArray(gruesse) || gruesse.length === 0) return;
+  const reiseId = gruesse[0].reiseId || gewaehlteId;
+  if (!reiseId) return;
+  const sortiert = [...gruesse].sort((a, b) => String(a.zeit || '').localeCompare(String(b.zeit || '')));
+  const neueste = sortiert[sortiert.length - 1];
+  const nachricht = await pushNachrichtBauen(sortiert, neueste);
   const vorher = await pagesInhalt(reiseId);
   speicherSchreiben(SPEICHER_NOTIFY_WARTEND, JSON.stringify({
     reiseId,
-    von: von || 'unterwegs',
+    titel: nachricht.titel,
+    text: nachricht.text,
     vorher: vorher ?? '',
   }));
   await notifyWartendFortsetzen();
+}
+
+async function pushNachrichtBauen(gruesse, neueste) {
+  const trip = await tripFuerReise(neueste.reiseId || gewaehlteId);
+  const zone = trip?.zeitzone || 'Europe/Berlin';
+  const zeit = neueste.zeit ? new Date(neueste.zeit) : new Date();
+  const status = trip ? getStatus(trip, zeit) : { status: 'vorReise' };
+  const situation = situationAusStatus(status, zeit, zone);
+  const name = neueste.von || speicherLesen(SPEICHER_NAME) || 'unterwegs';
+  const ort = ortAusStatus(status, trip);
+  const fotoSumme = gruesse.reduce((summe, g) => summe + (Number(g.fotos) || 0), 0);
+  if (gruesse.length > 1) {
+    return pushSammelText(situation, {
+      anzahl: gruesse.length,
+      fotos: fotoSumme,
+      name,
+      ort,
+    });
+  }
+  return pushTextWaehlen(situation, {
+    name,
+    fotoZahl: fotoSumme,
+    ort,
+  });
+}
+
+async function tripFuerReise(reiseId) {
+  if (!reiseId || !schluessel) return null;
+  if (tripCache.has(reiseId)) return tripCache.get(reiseId);
+  try {
+    const paket = await jsonDatei(`./daten/${encodeURIComponent(reiseId)}/trip.enc.json`);
+    const trip = await jsonEntschluesseln(paket, schluessel);
+    tripCache.set(reiseId, trip);
+    return trip;
+  } catch {
+    return null;
+  }
 }
 
 async function notifyWartendFortsetzen() {
@@ -960,8 +1049,9 @@ async function notifyWartendFortsetzen() {
       await warte(15000);
     }
     if (!bereit) return;
-    const titel = `📸 Neuer Gruß von ${auftrag.von || 'unterwegs'}`;
-    const ergebnis = await notifySenden(titel, 'Jetzt im Reisetracker ansehen');
+    const titel = auftrag.titel || '📸 Neuer Gruß';
+    const text = auftrag.text || 'Jetzt im Reisetracker ansehen';
+    const ergebnis = await notifySenden(titel, text);
     speicherLoeschen(SPEICHER_NOTIFY_WARTEND);
     zeige(sendeOk, `Familie benachrichtigt (${ergebnis.gesendet} Geräte)`);
     zeige(pushMeldung, `Familie benachrichtigt (${ergebnis.gesendet} Geräte)`);
@@ -1012,10 +1102,15 @@ async function notifySenden(title, body) {
   };
 }
 
+/** Basis-URL des Workers + Pfad, immer absolute https-URL. */
 function workerUrl(basis, pfad) {
-  const url = new URL(basis, document.baseURI);
+  let text = String(basis || '').trim();
+  if (!text) throw new Error('push-aus');
+  if (!/^https?:\/\//i.test(text)) text = `https://${text}`;
+  const url = new URL(text);
   const stamm = url.href.replace(/\/+$/, '');
-  return `${stamm}${pfad}`;
+  const anhang = pfad.startsWith('/') ? pfad : `/${pfad}`;
+  return `${stamm}${anhang}`;
 }
 
 function warte(ms) {
@@ -1051,6 +1146,7 @@ function abmelden() {
   index = null;
   gewaehlteId = null;
   familyToken = '';
+  tripCache.clear();
   passwortEingabe.value = '';
   document.querySelector('#einricht-token').value = '';
   schirm(passwortSchirm);

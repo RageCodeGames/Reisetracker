@@ -31,31 +31,78 @@ const ERLAUBTE_ORIGINS = [
 export default {
   async fetch(anfrage, env) {
     const cors = corsKoepfe(anfrage);
-    if (anfrage.method === 'OPTIONS') {
-      if (!cors) return new Response(null, { status: 403 });
-      return new Response(null, { status: 204, headers: cors });
-    }
-
-    const url = new URL(anfrage.url);
-    const pfad = url.pathname.replace(/\/+$/, '') || '/';
+    const methode = anfrage.method || 'GET';
+    const pfad = pfadNormalisieren(new URL(anfrage.url).pathname);
+    let status = 500;
 
     try {
-      if (anfrage.method === 'POST' && pfad.endsWith('/subscribe')) {
-        return jsonAntwort(await abonnieren(anfrage, env), 200, cors);
+      // Preflight: immer 204, CORS wenn Origin erlaubt.
+      if (methode === 'OPTIONS') {
+        status = 204;
+        return antwortMitLog(methode, pfad, status, new Response(null, {
+          status: 204,
+          headers: {
+            ...(cors || {}),
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Max-Age': '86400',
+          },
+        }));
       }
-      if (anfrage.method === 'POST' && pfad.endsWith('/unsubscribe')) {
-        return jsonAntwort(await abbestellen(anfrage, env), 200, cors);
+
+      if (methode === 'GET' && pfad === '/health') {
+        status = 200;
+        return antwortMitLog(methode, pfad, status, new Response('ok', {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            ...(cors || {}),
+          },
+        }));
       }
-      if (anfrage.method === 'POST' && pfad.endsWith('/notify')) {
-        return jsonAntwort(await benachrichtigen(anfrage, env), 200, cors);
+
+      const postRouten = {
+        '/subscribe': abonnieren,
+        '/unsubscribe': abbestellen,
+        '/notify': benachrichtigen,
+      };
+
+      if (pfad in postRouten) {
+        if (methode !== 'POST') {
+          status = 405;
+          return antwortMitLog(methode, pfad, status, jsonAntwort(
+            { fehler: 'method' },
+            405,
+            cors,
+            { Allow: 'POST, OPTIONS' },
+          ));
+        }
+        const daten = await postRouten[pfad](anfrage, env);
+        status = 200;
+        return antwortMitLog(methode, pfad, status, jsonAntwort(daten, 200, cors));
       }
-      return jsonAntwort({ fehler: 'unbekannt' }, 404, cors);
+
+      status = 404;
+      return antwortMitLog(methode, pfad, status, jsonAntwort({ fehler: 'unbekannt' }, 404, cors));
     } catch (problem) {
-      const code = problem.status || 500;
-      return jsonAntwort({ fehler: problem.message || 'fehler' }, code, cors);
+      status = problem.status || 500;
+      return antwortMitLog(
+        methode,
+        pfad,
+        status,
+        jsonAntwort({ fehler: problem.message || 'fehler' }, status, cors),
+      );
     }
   },
 };
+
+/** /subscribe und /subscribe/ → /subscribe */
+function pfadNormalisieren(pathname) {
+  let pfad = String(pathname || '/');
+  if (pfad.length > 1) pfad = pfad.replace(/\/+$/, '');
+  if (!pfad.startsWith('/')) pfad = `/${pfad}`;
+  return pfad || '/';
+}
 
 function corsKoepfe(anfrage) {
   const origin = anfrage.headers.get('Origin') || '';
@@ -68,14 +115,20 @@ function corsKoepfe(anfrage) {
   };
 }
 
-function jsonAntwort(objekt, status, cors) {
+function jsonAntwort(objekt, status, cors, extra = {}) {
   return new Response(JSON.stringify(objekt), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       ...(cors || {}),
+      ...extra,
     },
   });
+}
+
+function antwortMitLog(methode, pfad, status, antwort) {
+  console.log(`${methode} ${pfad} → ${status}`);
+  return antwort;
 }
 
 async function jsonBody(anfrage) {

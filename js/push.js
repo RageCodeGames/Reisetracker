@@ -81,10 +81,15 @@ export async function pushAusschalten(konfig, key) {
   await sub.unsubscribe();
 }
 
+/** Basis-URL des Workers + Pfad, immer absolute https-URL. */
 function workerUrl(basis, pfad) {
-  const url = new URL(basis, document.baseURI);
+  let text = String(basis || '').trim();
+  if (!text) throw new Error('push-aus');
+  if (!/^https?:\/\//i.test(text)) text = `https://${text}`;
+  const url = new URL(text);
   const stamm = url.href.replace(/\/+$/, '');
-  return `${stamm}${pfad}`;
+  const anhang = pfad.startsWith('/') ? pfad : `/${pfad}`;
+  return `${stamm}${anhang}`;
 }
 
 function vapidAlsBytes(base64url) {

@@ -102,7 +102,11 @@
         <p class="hinweis">FAMILY_PUSH_TOKEN (bei Cloudflare eintragen):</p>
         <p id="sende-push-token" class="push-token"></p>
         <button id="sende-token-kopieren" class="leise" type="button">Token kopieren</button>
-        <button id="push-test" class="primaer" type="button" hidden>Testbenachrichtigung senden</button>
+        <div id="push-test-kasten" hidden>
+          <label for="push-test-situation">Test-Situation</label>
+          <select id="push-test-situation"></select>
+          <button id="push-test" class="primaer" type="button">Testbenachrichtigung senden</button>
+        </div>
         <p id="push-meldung" class="hinweis" hidden></p>
       </details>
 

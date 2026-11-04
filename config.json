@@ -1,6 +1,6 @@
 {
   "salt": "78JgBGc1uN9q4U0n9p290Q==",
   "iterationen": 310000,
-  "pushWorker": "",
-  "vapidPublicKey": ""
+  "pushWorker": "https://reisetracker-push.ragecodegames.workers.dev",
+  "vapidPublicKey": "BAdMmIV7yqkX4His9kGELuq4mauN2EKFn78NlgkA_rdQksn4WBFjRHPeRconPteU5x6Uc0RV43IOmV5xnjkvCns"
 }
