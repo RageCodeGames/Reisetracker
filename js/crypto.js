@@ -129,3 +129,17 @@ export async function jsonEntschluesseln(paket, key) {
   );
   return JSON.parse(new TextDecoder().decode(klar));
 }
+
+/**
+ * Token für Push-Abo: SHA-256(exportierter Familien-Schlüssel + "|push"), hex.
+ * Nur wer das Passwort kennt, kann Benachrichtigungen abonnieren.
+ */
+export async function familyPushToken(key) {
+  const roh = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+  const anhang = new TextEncoder().encode('|push');
+  const daten = new Uint8Array(roh.length + anhang.length);
+  daten.set(roh);
+  daten.set(anhang, roh.length);
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', daten));
+  return [...hash].map((b) => b.toString(16).padStart(2, '0')).join('');
+}

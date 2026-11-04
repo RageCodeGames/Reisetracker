@@ -44,6 +44,14 @@
         <label for="einricht-token">GitHub-Token (Inhalt schreiben)</label>
         <input id="einricht-token" name="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required>
 
+        <label for="einricht-notify">Push-Geheimnis (NOTIFY_SECRET)</label>
+        <input id="einricht-notify" name="notify" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <p class="hinweis">Nur auf diesem Gerät. Denselben Wert bei Cloudflare als Secret eintragen.</p>
+
+        <p class="hinweis">FAMILY_PUSH_TOKEN (bei Cloudflare eintragen):</p>
+        <p id="einricht-push-token" class="push-token"></p>
+        <button id="einricht-token-kopieren" class="leise" type="button">Token kopieren</button>
+
         <p id="einricht-fehler" class="fehler" role="alert" hidden></p>
         <button class="primaer" type="submit">Speichern</button>
       </form>
@@ -85,6 +93,18 @@
       <ul id="update-liste" class="update-liste"></ul>
       <p id="update-liste-leer" class="hinweis">Noch keine Grüße für diese Reise.</p>
       <p class="hinweis update-liste-hinweis">Änderungen sind nach 1–2 Minuten bei allen sichtbar.</p>
+
+      <details id="push-einstellungen" class="push-einstellungen">
+        <summary>Benachrichtigungen</summary>
+        <label for="sende-notify">Push-Geheimnis (NOTIFY_SECRET)</label>
+        <input id="sende-notify" name="notify" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="sende-notify-speichern" class="primaer" type="button">Geheimnis merken</button>
+        <p class="hinweis">FAMILY_PUSH_TOKEN (bei Cloudflare eintragen):</p>
+        <p id="sende-push-token" class="push-token"></p>
+        <button id="sende-token-kopieren" class="leise" type="button">Token kopieren</button>
+        <button id="push-test" class="primaer" type="button" hidden>Testbenachrichtigung senden</button>
+        <p id="push-meldung" class="hinweis" hidden></p>
+      </details>
 
       <button id="abmelden" class="leise" type="button">Abmelden</button>
     </section>

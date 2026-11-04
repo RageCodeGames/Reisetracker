@@ -6,7 +6,7 @@
  * CACHE_VERSION hochzählen, wenn sich App-Dateien ändern.
  */
 
-const CACHE_VERSION = 'v10';
+const CACHE_VERSION = 'v11';
 const CACHE_NAME = `reisetracker-${CACHE_VERSION}`;
 const CACHE_ADMIN = 'reisetracker-admin';
 
@@ -19,6 +19,7 @@ const APP_DATEIEN = [
   './js/trip.js',
   './js/map.js',
   './js/updates.js',
+  './js/push.js',
   './manifest.json',
   './icons/icon.svg',
   './icons/schiff.svg',
@@ -75,6 +76,7 @@ self.addEventListener('fetch', (ereignis) => {
   if (url.origin === self.location.origin && url.pathname.endsWith('/sw.js')) return;
   // GitHub-API nie anfassen und nie cachen – Upload braucht immer den aktuellen Stand.
   if (url.hostname === 'api.github.com') return;
+  if (url.hostname.endsWith('.workers.dev')) return;
   if (url.origin !== self.location.origin && url.hostname !== 'cdn.jsdelivr.net') return;
 
   if (istAdminDatei(url)) {
@@ -157,3 +159,42 @@ async function cdnMitAbhaengigkeiten(cache, startUrls) {
     }
   }
 }
+
+self.addEventListener('push', (ereignis) => {
+  let titel = 'Neuer Gruß';
+  let text = 'Jetzt im Reisetracker ansehen';
+  try {
+    const daten = ereignis.data ? ereignis.data.json() : null;
+    if (daten?.title) titel = String(daten.title);
+    if (daten?.body) text = String(daten.body);
+  } catch {
+    try {
+      const roh = ereignis.data?.text();
+      if (roh) text = roh;
+    } catch {
+      // Standardtext bleibt.
+    }
+  }
+  ereignis.waitUntil(self.registration.showNotification(titel, {
+    body: text,
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    lang: 'de',
+  }));
+});
+
+self.addEventListener('notificationclick', (ereignis) => {
+  ereignis.notification.close();
+  const ziel = new URL('./', self.registration.scope).href;
+  ereignis.waitUntil((async () => {
+    const fenster = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of fenster) {
+      const adresse = client.url || '';
+      if (adresse.startsWith(ziel) && !adresse.includes('admin.html') && 'focus' in client) {
+        return client.focus();
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(ziel);
+    return undefined;
+  })());
+});

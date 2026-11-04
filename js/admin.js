@@ -10,6 +10,7 @@ import {
   jsonEntschluesseln,
   jsonVerschluesseln,
   schluesselAbleiten,
+  familyPushToken,
   schluesselAlsRohdaten,
   schluesselAusRohdaten,
 } from './crypto.js';
@@ -20,6 +21,8 @@ const SPEICHER_NAME = 'reisetracker.admin.name';
 const SPEICHER_BENUTZER = 'reisetracker.admin.benutzer';
 const SPEICHER_REPO = 'reisetracker.admin.repo';
 const SPEICHER_TOKEN = 'reisetracker.admin.token';
+const SPEICHER_NOTIFY = 'reisetracker.admin.notify';
+const SPEICHER_NOTIFY_WARTEND = 'reisetracker.admin.notify.wartend';
 const DB_NAME = 'reisetracker.admin';
 const STORE = 'warteschlange';
 const MAX_FOTOS = 10;
@@ -51,6 +54,15 @@ const warteListe = document.querySelector('#warte-liste');
 const jetztSenden = document.querySelector('#jetzt-senden');
 const updateListe = document.querySelector('#update-liste');
 const updateListeLeer = document.querySelector('#update-liste-leer');
+const einrichtNotify = document.querySelector('#einricht-notify');
+const einrichtPushToken = document.querySelector('#einricht-push-token');
+const sendeNotify = document.querySelector('#sende-notify');
+const sendePushToken = document.querySelector('#sende-push-token');
+const pushTest = document.querySelector('#push-test');
+const pushMeldung = document.querySelector('#push-meldung');
+
+let familyToken = '';
+let notifyLaeuft = false;
 
 let konfig = null;
 let schluessel = null;
@@ -69,6 +81,10 @@ reiseWahl.addEventListener('change', () => {
   listeAktualisieren().catch(() => {});
 });
 jetztSenden.addEventListener('click', () => warteschlangeSenden(true));
+document.querySelector('#einricht-token-kopieren')?.addEventListener('click', () => tokenKopieren(einrichtPushToken));
+document.querySelector('#sende-token-kopieren')?.addEventListener('click', () => tokenKopieren(sendePushToken));
+document.querySelector('#sende-notify-speichern')?.addEventListener('click', notifyGeheimnisMerken);
+pushTest?.addEventListener('click', () => notifyTesten());
 document.querySelector('#abmelden').addEventListener('click', abmelden);
 document.querySelector('#einricht-abmelden').addEventListener('click', abmelden);
 window.addEventListener('online', () => sendeVersuch(false));
@@ -95,9 +111,10 @@ async function start() {
   if (gespeichert) {
     try {
       const key = await schluesselAusRohdaten(gespeichert);
-      await indexLaden(key);
-      nachPasswort();
-      return;
+    await indexLaden(key);
+    familyToken = await familyPushToken(key);
+    nachPasswort();
+    return;
     } catch (problem) {
       if (istPasswortFalsch(problem)) speicherLoeschen(SPEICHER_SCHLUESSEL);
       else {
@@ -126,6 +143,7 @@ async function passwortAbsenden(ereignis) {
     await indexLaden(key);
     passwortEingabe.value = '';
     speicherSchreiben(SPEICHER_SCHLUESSEL, await schluesselAlsRohdaten(key));
+    familyToken = await familyPushToken(key);
     nachPasswort();
   } catch (problem) {
     zeige(passwortFehler, meldungFuer(problem));
@@ -136,12 +154,14 @@ async function passwortAbsenden(ereignis) {
 }
 
 function nachPasswort() {
+  pushTokenAnzeigen();
   if (!einrichtungVollstaendig()) {
     schirm(einrichtSchirm);
     document.querySelector('#einricht-name').value = speicherLesen(SPEICHER_NAME) || '';
     document.querySelector('#einricht-benutzer').value = speicherLesen(SPEICHER_BENUTZER) || '';
     document.querySelector('#einricht-repo').value = speicherLesen(SPEICHER_REPO) || '';
     document.querySelector('#einricht-token').value = '';
+    einrichtNotify.value = '';
     document.querySelector('#einricht-name').focus();
     return;
   }
@@ -159,11 +179,14 @@ function einrichtungSpeichern(ereignis) {
     zeige(einrichtFehler, 'Bitte alle Felder ausfüllen.');
     return;
   }
+  const notify = einrichtNotify.value.trim();
   const ok = speicherSchreiben(SPEICHER_NAME, name)
     && speicherSchreiben(SPEICHER_BENUTZER, benutzer)
     && speicherSchreiben(SPEICHER_REPO, repo)
-    && speicherSchreiben(SPEICHER_TOKEN, token);
+    && speicherSchreiben(SPEICHER_TOKEN, token)
+    && (!notify || speicherSchreiben(SPEICHER_NOTIFY, notify));
   document.querySelector('#einricht-token').value = '';
+  einrichtNotify.value = '';
   if (!ok) {
     zeige(einrichtFehler, 'Auf diesem Gerät kann ich mir die Angaben nicht merken.');
     return;
@@ -175,8 +198,11 @@ function sendeSchirmZeigen() {
   schirm(sendeSchirm);
   reisenFuellen();
   warteschlangeAnzeigen();
+  pushTokenAnzeigen();
+  pushTest.hidden = !pushWorkerOk();
   listeAktualisieren().catch(() => {});
   sendeVersuch(false);
+  notifyWartendFortsetzen().catch(() => {});
 }
 
 function reisenFuellen() {
@@ -246,6 +272,7 @@ async function grussAbsenden(ereignis) {
     zeige(sendeOk, 'Der Gruß ist unterwegs.');
     if (Array.isArray(updates)) listeZeichnen(updates);
     else await listeAktualisieren();
+    notifyNachUpload(gewaehlteId, speicherLesen(SPEICHER_NAME) || '').catch(() => {});
   } catch (problem) {
     if (istOffline(problem)) {
       try {
@@ -621,6 +648,8 @@ async function warteschlangeSenden(manuell) {
     zeige(sendeOk, liste.length === 1 ? 'Der gespeicherte Gruß ist weg.' : 'Die gespeicherten Grüße sind weg.');
     if (Array.isArray(updates)) listeZeichnen(updates);
     else await listeAktualisieren();
+    const name = liste[0]?.eintrag?.von || speicherLesen(SPEICHER_NAME) || '';
+    notifyNachUpload(liste[0]?.reiseId || gewaehlteId, name).catch(() => {});
   } catch (problem) {
     if (manuell && !istOffline(problem)) zeige(sendeFehler, meldungFuer(problem));
   } finally {
@@ -846,6 +875,162 @@ function fortschritt(text) {
   zeige(sendeFortschritt, text);
 }
 
+function pushWorkerOk() {
+  return Boolean(konfig?.pushWorker);
+}
+
+function pushTokenAnzeigen() {
+  const text = familyToken || 'Nach dem Passwort sichtbar.';
+  if (einrichtPushToken) einrichtPushToken.textContent = text;
+  if (sendePushToken) sendePushToken.textContent = text;
+}
+
+function notifyGeheimnisMerken() {
+  const wert = sendeNotify.value.trim();
+  if (!wert) {
+    zeige(pushMeldung, 'Bitte ein Geheimnis eingeben.');
+    return;
+  }
+  if (!speicherSchreiben(SPEICHER_NOTIFY, wert)) {
+    zeige(pushMeldung, 'Auf diesem Gerät kann ich mir das Geheimnis nicht merken.');
+    return;
+  }
+  sendeNotify.value = '';
+  zeige(pushMeldung, 'Das Push-Geheimnis bleibt auf diesem Gerät.');
+}
+
+async function tokenKopieren(ziel) {
+  const text = ziel?.textContent || familyToken;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    zeige(pushMeldung, 'Token liegt in der Zwischenablage.');
+  } catch {
+    zeige(pushMeldung, 'Bitte den Token markieren und selbst kopieren.');
+  }
+}
+
+async function notifyTesten() {
+  if (!pushWorkerOk()) return;
+  try {
+    fortschritt('Benachrichtigung wird verschickt …');
+    const ergebnis = await notifySenden('📸 Neuer Gruß von Test', 'Jetzt im Reisetracker ansehen');
+    zeige(sendeOk, `Familie benachrichtigt (${ergebnis.gesendet} Geräte)`);
+  } catch (problem) {
+    zeige(sendeFehler, notifyMeldung(problem));
+  } finally {
+    verstecke(sendeFortschritt);
+  }
+}
+
+async function notifyNachUpload(reiseId, von) {
+  if (!pushWorkerOk() || !reiseId) return;
+  const vorher = await pagesInhalt(reiseId);
+  speicherSchreiben(SPEICHER_NOTIFY_WARTEND, JSON.stringify({
+    reiseId,
+    von: von || 'unterwegs',
+    vorher: vorher ?? '',
+  }));
+  await notifyWartendFortsetzen();
+}
+
+async function notifyWartendFortsetzen() {
+  if (notifyLaeuft || !pushWorkerOk()) return;
+  const roh = speicherLesen(SPEICHER_NOTIFY_WARTEND);
+  if (!roh) return;
+  let auftrag;
+  try {
+    auftrag = JSON.parse(roh);
+  } catch {
+    speicherLoeschen(SPEICHER_NOTIFY_WARTEND);
+    return;
+  }
+  notifyLaeuft = true;
+  try {
+    zeige(pushMeldung, 'Benachrichtigung wird verschickt …');
+    fortschritt('Benachrichtigung wird verschickt …');
+    const deadline = Date.now() + 5 * 60 * 1000;
+    let bereit = false;
+    while (Date.now() < deadline) {
+      const jetzt = await pagesInhalt(auftrag.reiseId);
+      if (jetzt != null && jetzt !== auftrag.vorher) {
+        bereit = true;
+        break;
+      }
+      await warte(15000);
+    }
+    if (!bereit) return;
+    const titel = `📸 Neuer Gruß von ${auftrag.von || 'unterwegs'}`;
+    const ergebnis = await notifySenden(titel, 'Jetzt im Reisetracker ansehen');
+    speicherLoeschen(SPEICHER_NOTIFY_WARTEND);
+    zeige(sendeOk, `Familie benachrichtigt (${ergebnis.gesendet} Geräte)`);
+    zeige(pushMeldung, `Familie benachrichtigt (${ergebnis.gesendet} Geräte)`);
+  } catch (problem) {
+    zeige(sendeFehler, notifyMeldung(problem));
+  } finally {
+    notifyLaeuft = false;
+    verstecke(sendeFortschritt);
+  }
+}
+
+async function pagesInhalt(reiseId) {
+  try {
+    const antwort = await fetch(
+      new URL(`./daten/${encodeURIComponent(reiseId)}/updates.enc.json`, document.baseURI),
+      { cache: 'no-store' },
+    );
+    if (!antwort.ok) return antwort.status === 404 ? '' : null;
+    return await antwort.text();
+  } catch {
+    return null;
+  }
+}
+
+async function notifySenden(title, body) {
+  const secret = speicherLesen(SPEICHER_NOTIFY);
+  if (!secret) {
+    const problem = new Error('notify-secret');
+    throw problem;
+  }
+  const antwort = await fetch(workerUrl(konfig.pushWorker, '/notify'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${secret}`,
+    },
+    body: JSON.stringify({ title, body }),
+  });
+  if (!antwort.ok) {
+    const problem = new Error('notify');
+    problem.code = antwort.status;
+    throw problem;
+  }
+  const daten = await antwort.json();
+  return {
+    gesendet: Number(daten.gesendet) || 0,
+    fehlgeschlagen: Number(daten.fehlgeschlagen) || 0,
+  };
+}
+
+function workerUrl(basis, pfad) {
+  const url = new URL(basis, document.baseURI);
+  const stamm = url.href.replace(/\/+$/, '');
+  return `${stamm}${pfad}`;
+}
+
+function warte(ms) {
+  return new Promise((ok) => setTimeout(ok, ms));
+}
+
+function notifyMeldung(problem) {
+  if (problem?.message === 'notify-secret') {
+    return 'Bitte zuerst das Push-Geheimnis in den Einstellungen merken.';
+  }
+  if (problem?.code === 403) return 'Das Push-Geheimnis stimmt nicht.';
+  if (istOffline(problem)) return 'Kein Internet für die Benachrichtigung.';
+  return 'Die Benachrichtigung hat nicht geklappt.';
+}
+
 function serviceWorkerAnmelden() {
   if (!('serviceWorker' in navigator)) return;
   const adresse = new URL('./sw.js', document.baseURI);
@@ -865,6 +1050,7 @@ function abmelden() {
   schluessel = null;
   index = null;
   gewaehlteId = null;
+  familyToken = '';
   passwortEingabe.value = '';
   document.querySelector('#einricht-token').value = '';
   schirm(passwortSchirm);

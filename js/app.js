@@ -31,6 +31,14 @@ import {
   updatesNachZeitraum,
   vorRelativ,
 } from './updates.js';
+import {
+  istIos,
+  istInstalliert,
+  pushAusschalten,
+  pushAktivieren,
+  pushIstAn,
+  pushKonfigOk,
+} from './push.js';
 
 const SPEICHER = 'reisetracker.schluessel';
 const SPEICHER_GESEHEN = 'reisetracker.gesehen';
@@ -66,6 +74,11 @@ const ortLand = document.querySelector('#ort-popup-land');
 const ortZeiten = document.querySelector('#ort-popup-zeiten');
 const ortInfo = document.querySelector('#ort-popup-info');
 const merkenHinweis = document.querySelector('#merken-hinweis');
+const pushKasten = document.querySelector('#push-kasten');
+const pushHinweis = document.querySelector('#push-hinweis');
+const pushAn = document.querySelector('#push-an');
+const pushStatus = document.querySelector('#push-status');
+const pushAus = document.querySelector('#push-aus');
 const abmeldenKnopf = document.querySelector('#abmelden');
 const vollbild = document.querySelector('#gruss-vollbild');
 const vollbildFoto = document.querySelector('#gruss-vollbild-foto');
@@ -119,6 +132,8 @@ formular.addEventListener('submit', async (ereignis) => {
 });
 
 abmeldenKnopf.addEventListener('click', abmelden);
+pushAn.addEventListener('click', pushAnklicken);
+pushAus.addEventListener('click', pushAusklicken);
 vollbildSchliessen.addEventListener('click', vollbildSchliessenJetzt);
 const vollbildFotoWrap = document.querySelector('.gruss-vollbild-foto-wrap');
 vollbildFotoWrap.addEventListener('pointerdown', (ereignis) => {
@@ -237,6 +252,7 @@ function zeigeStatus() {
   passwortSchirm.hidden = true;
   statusSchirm.hidden = false;
   zeichne();
+  pushAnzeigen().catch(() => {});
   if (timer) clearInterval(timer);
   timer = setInterval(zeichne, 60000);
   if (updatesTimer) clearInterval(updatesTimer);
@@ -638,6 +654,7 @@ function zeigePasswort() {
   if (vollbild.open) vollbild.close();
   statusSchirm.hidden = true;
   passwortSchirm.hidden = false;
+  pushKasten.hidden = true;
   document.title = 'Reisetracker';
 }
 
@@ -671,8 +688,61 @@ function abmelden() {
   eingabe.value = '';
   fehler.hidden = true;
   merkenHinweis.hidden = true;
+  pushKasten.hidden = true;
   zeigePasswort();
   eingabe.focus();
+}
+
+async function pushAnzeigen() {
+  if (!pushKonfigOk(konfig) || !schluessel) {
+    pushKasten.hidden = true;
+    return;
+  }
+  pushKasten.hidden = false;
+  pushHinweis.hidden = true;
+  const an = await pushIstAn();
+  pushAn.hidden = an;
+  pushStatus.hidden = !an;
+  pushAus.hidden = !an;
+  if (!an && istIos() && !istInstalliert()) {
+    pushHinweis.hidden = false;
+    pushHinweis.textContent = 'Bitte zuerst über Teilen → Zum Home-Bildschirm installieren';
+  }
+}
+
+async function pushAnklicken() {
+  pushHinweis.hidden = true;
+  pushAn.disabled = true;
+  try {
+    await pushAktivieren(konfig, schluessel);
+    await pushAnzeigen();
+  } catch (problem) {
+    pushHinweis.hidden = false;
+    if (problem?.message === 'ios-install') {
+      pushHinweis.textContent = 'Bitte zuerst über Teilen → Zum Home-Bildschirm installieren';
+    } else if (problem?.message === 'push-erlaubnis') {
+      pushHinweis.textContent = 'Ohne Erlaubnis kann ich keine Benachrichtigungen zeigen.';
+    } else if (problem?.message === 'push-fehlt') {
+      pushHinweis.textContent = 'Dieses Gerät unterstützt keine Benachrichtigungen.';
+    } else {
+      pushHinweis.textContent = 'Das Aktivieren hat nicht geklappt. Bitte später noch einmal versuchen.';
+    }
+  } finally {
+    pushAn.disabled = false;
+  }
+}
+
+async function pushAusklicken() {
+  pushAus.disabled = true;
+  try {
+    await pushAusschalten(konfig, schluessel);
+    await pushAnzeigen();
+  } catch {
+    pushHinweis.hidden = false;
+    pushHinweis.textContent = 'Ausschalten hat nicht geklappt.';
+  } finally {
+    pushAus.disabled = false;
+  }
 }
 
 function zeigeFehler(text) {

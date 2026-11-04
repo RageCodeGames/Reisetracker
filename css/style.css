@@ -128,6 +128,46 @@ button:disabled {
   border-radius: 0.6rem;
 }
 
+.push-kasten {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0 0 1rem;
+}
+
+.push-kasten .leise {
+  margin-top: 0;
+}
+
+.push-token {
+  margin: 0 0 0.6rem;
+  padding: 0.7rem 0.8rem;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  background: #fffdf8;
+  border: 2px solid #1a1208;
+  border-radius: 0.5rem;
+}
+
+.push-einstellungen {
+  margin: 0 0 1rem;
+  font-size: 18px;
+}
+
+.push-einstellungen summary {
+  min-height: 3rem;
+  padding: 0.45rem 0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.push-einstellungen .leise,
+.push-einstellungen .primaer {
+  margin-top: 0;
+  margin-bottom: 0.7rem;
+}
+
 :focus-visible {
   outline: 3px solid #0c3b6e;
   outline-offset: 3px;

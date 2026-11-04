@@ -1,4 +1,6 @@
 {
   "salt": "78JgBGc1uN9q4U0n9p290Q==",
-  "iterationen": 310000
+  "iterationen": 310000,
+  "pushWorker": "",
+  "vapidPublicKey": ""
 }
