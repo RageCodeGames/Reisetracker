@@ -15,6 +15,7 @@ import {
   aktiveReise,
   getStatus,
   ortPopup,
+  regionPopup,
   statusKarte,
   tagesUebersicht,
   uhrzeitLang,
@@ -62,6 +63,8 @@ const karteRahmen = document.querySelector('#karte');
 const karteFehler = document.querySelector('#karte-fehler');
 const ganzeReiseKnopf = document.querySelector('#ganze-reise');
 const woKnopf = document.querySelector('#wo-sind-wir');
+const zoomPlusKnopf = document.querySelector('#karte-zoom-plus');
+const zoomMinusKnopf = document.querySelector('#karte-zoom-minus');
 const vorReise = document.querySelector('#vor-reise');
 const tageListe = document.querySelector('#tage');
 const nachReise = document.querySelector('#nach-reise');
@@ -73,6 +76,7 @@ const ortName = document.querySelector('#ort-popup-name');
 const ortLand = document.querySelector('#ort-popup-land');
 const ortZeiten = document.querySelector('#ort-popup-zeiten');
 const ortInfo = document.querySelector('#ort-popup-info');
+const ortListe = document.querySelector('#ort-popup-liste');
 const merkenHinweis = document.querySelector('#merken-hinweis');
 const pushKasten = document.querySelector('#push-kasten');
 const pushHinweis = document.querySelector('#push-hinweis');
@@ -107,6 +111,8 @@ let wischX = null;
 
 ganzeReiseKnopf.addEventListener('click', () => karte?.ganzeReise());
 woKnopf.addEventListener('click', () => karte?.woSindWir());
+zoomPlusKnopf.addEventListener('click', () => karte?.zoomPlus());
+zoomMinusKnopf.addEventListener('click', () => karte?.zoomMinus());
 
 formular.addEventListener('submit', async (ereignis) => {
   ereignis.preventDefault();
@@ -318,7 +324,7 @@ async function zeichne() {
       karteLaeuft = true;
       const modul = await import('./map.js');
       karte = await modul.karteErstellen(karteRahmen);
-      karte.setzeOrtKlick((ort) => ortPopupZeigen(ort));
+      karte.setzeOrtKlick((ziel) => ortPopupZeigen(ziel));
       karte.setzeGrussKlick((gruss) => vollbildOeffnen(gruss, updates));
       karteLaeuft = false;
     }
@@ -355,17 +361,27 @@ function tageZeichnen(tage, nachTag) {
     liste.className = 'tag-zeilen';
     for (const zeile of tag.zeilen) {
       const li = document.createElement('li');
-      if (zeile.uhr) {
-        const uhr = document.createElement('span');
-        uhr.className = 'tag-uhr';
+      if (zeile.info) li.className = 'tag-info';
+      const uhr = document.createElement('span');
+      uhr.className = 'tag-uhr';
+      if (zeile.de) {
+        const deutsch = document.createElement('span');
+        deutsch.className = 'tag-uhr-de';
+        deutsch.textContent = zeile.de;
+        uhr.append(deutsch);
+        if (zeile.ort) {
+          const ort = document.createElement('span');
+          ort.className = 'tag-uhr-ort';
+          ort.textContent = zeile.ort;
+          uhr.append(ort);
+        }
+      } else if (zeile.uhr) {
         uhr.textContent = zeile.uhr;
-        const text = document.createElement('span');
-        text.textContent = zeile.text;
-        li.append(uhr, text);
-      } else {
-        li.className = 'ohne-uhr';
-        li.textContent = zeile.text;
       }
+      const text = document.createElement('span');
+      text.className = 'tag-text';
+      text.textContent = zeile.text;
+      li.append(uhr, text);
       liste.append(li);
     }
 
@@ -616,8 +632,10 @@ function gesehenSchreiben() {
   }
 }
 
-function ortPopupZeigen(ort) {
-  const daten = ortPopup(ort, zustand?.trip);
+function ortPopupZeigen(ziel) {
+  const daten = Array.isArray(ziel)
+    ? regionPopup(ziel, zustand?.trip)
+    : ortPopup(ziel, zustand?.trip);
   if (!daten) return;
   ortName.textContent = daten.name || 'Ort';
   if (daten.land) {
@@ -640,6 +658,31 @@ function ortPopupZeigen(ort) {
   } else {
     ortInfo.hidden = true;
     ortInfo.textContent = '';
+  }
+  ortListe.replaceChildren();
+  if (daten.liste?.length) {
+    ortListe.hidden = false;
+    for (const eintrag of daten.liste) {
+      const li = document.createElement('li');
+      const titel = document.createElement('strong');
+      titel.textContent = eintrag.titel;
+      li.append(titel);
+      if (eintrag.zeiten) {
+        const zeiten = document.createElement('span');
+        zeiten.className = 'ort-popup-liste-zeiten';
+        zeiten.textContent = eintrag.zeiten;
+        li.append(zeiten);
+      }
+      if (eintrag.info) {
+        const info = document.createElement('span');
+        info.className = 'ort-popup-liste-info';
+        info.textContent = eintrag.info;
+        li.append(info);
+      }
+      ortListe.append(li);
+    }
+  } else {
+    ortListe.hidden = true;
   }
   if (typeof ortDialog.showModal === 'function') ortDialog.showModal();
   else ortDialog.setAttribute('open', '');

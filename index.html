@@ -43,6 +43,10 @@
       <div class="karte-rahmen">
         <div id="karte"></div>
         <p id="karte-fehler" class="karte-fehler" hidden>Die Karte konnte nicht geladen werden.</p>
+        <div class="karten-zoom" aria-label="Karte vergrößern oder verkleinern">
+          <button id="karte-zoom-plus" class="karten-zoom-knopf" type="button" aria-label="Vergrößern">+</button>
+          <button id="karte-zoom-minus" class="karten-zoom-knopf" type="button" aria-label="Verkleinern">−</button>
+        </div>
         <div class="karten-knopfleiste">
           <button id="ganze-reise" class="karten-knopf" type="button">🗺️ Ganze Reise</button>
           <button id="wo-sind-wir" class="karten-knopf" type="button">📍 Wo sind wir?</button>
@@ -79,6 +83,7 @@
         <p id="ort-popup-land" class="ort-popup-land" hidden></p>
         <p id="ort-popup-zeiten" class="ort-popup-zeiten" hidden></p>
         <p id="ort-popup-info" class="ort-popup-info" hidden></p>
+        <ul id="ort-popup-liste" class="ort-popup-liste" hidden></ul>
       </form>
     </dialog>
 

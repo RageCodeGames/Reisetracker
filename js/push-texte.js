@@ -28,6 +28,31 @@ export const PUSH_TEXTE = {
     { titel: '🏨 Grüße aus {ort}', text: '{n} von {name}' },
     { titel: '🌆 Stadtbummel vor dem Ablegen', text: '{n} aus {ort}' },
   ],
+  stadt: [
+    { titel: '🏙️ Grüße aus {ort}', text: '{n} von {name}' },
+  ],
+  strand: [
+    { titel: '🏖️ Grüße aus {ort}', text: '{name} schickt {n} vom Strand' },
+    { titel: '🌴 Palmen, Sonne, {ort}', text: '{n}' },
+  ],
+  flug: [
+    { titel: '✈️ Grüße aus 10.000 m Höhe', text: '{n} auf dem Weg nach {ort}' },
+  ],
+  flughafen: [
+    { titel: "🛫 Gleich geht's weiter", text: '{n} vom Flughafen {ort}' },
+  ],
+  roller: [
+    { titel: '🛵 Kurvenalarm!', text: '{n} von unterwegs nach {ort}' },
+  ],
+  bus: [
+    { titel: '🚌 Unterwegs nach {ort}', text: '{n} aus dem Bus' },
+  ],
+  faehre: [
+    { titel: '⛴️ Ab auf die Insel', text: '{n} von der Fähre nach {ort}' },
+  ],
+  auto: [
+    { titel: '🚗 Unterwegs nach {ort}', text: '{n} aus dem Auto' },
+  ],
   hafen: [
     { titel: '⚓ Landgang in {ort}!', text: '{n} von {name}' },
     { titel: '🗺️ Neuer Hafen: {ort}', text: '{name} schickt {n}' },
@@ -50,8 +75,16 @@ export const PUSH_TEST_OPTIONEN = [
   { id: 'vorReise', label: 'Zuhause / vor der Reise' },
   { id: 'nachtzug', label: 'Nachtzug' },
   { id: 'zug', label: 'Zug / S-Bahn / Taxi' },
+  { id: 'flug', label: 'Flug' },
+  { id: 'flughafen', label: 'Flughafen' },
+  { id: 'roller', label: 'Roller' },
+  { id: 'bus', label: 'Bus' },
+  { id: 'faehre', label: 'Fähre' },
+  { id: 'auto', label: 'Auto' },
   { id: 'bahnhof', label: 'Bahnhof' },
   { id: 'hotel', label: 'Hotel' },
+  { id: 'stadt', label: 'Stadt / Hotel ohne Strand' },
+  { id: 'strand', label: 'Strand' },
   { id: 'hafen', label: 'Hafen' },
   { id: 'see', label: 'Auf See' },
   { id: 'nachReise', label: 'Nach der Reise' },
@@ -69,28 +102,36 @@ export function situationAusStatus(status, zeit, zone = 'Europe/Berlin') {
   if (status.status === 'nachReise') return 'nachReise';
   if (status.status === 'fahrt') {
     if (status.modus === 'schiff' || status.seetag) return 'see';
-    if (status.modus === 'zug' && istNachtLokal(zeit, zone)) return 'nachtzug';
+    if (status.modus === 'flug') return 'flug';
+    if (status.modus === 'roller') return 'roller';
+    if (status.modus === 'bus') return 'bus';
+    if (status.modus === 'faehre') return 'faehre';
+    if (status.modus === 'auto') return 'auto';
+    if (status.modus === 'zug' && istNachtStatus(status, zeit, zone)) return 'nachtzug';
     return 'zug';
   }
   if (status.status === 'ort') {
     if (status.ortArt === 'zuhause') return 'vorReise';
+    if (status.ortArt === 'flughafen') return 'flughafen';
+    if (status.strand) return 'strand';
     if (status.ortArt === 'bahnhof') return 'bahnhof';
     if (status.ortArt === 'hafen') return 'hafen';
-    if (status.ortArt === 'hotel') return 'hotel';
+    if (status.ortArt === 'hotel') return 'stadt';
     return 'hotel';
   }
   return 'vorReise';
 }
 
-/** Ort für {ort}: bei Fahrt das Ziel, sonst der aktuelle Name. */
+/** Ort für {ort}: bevorzugt region, sonst Name. */
 export function ortAusStatus(status, trip = null) {
   if (status?.status === 'fahrt') {
-    return status.nach?.name || 'unterwegs';
+    return status.nach?.region || status.nach?.name || 'unterwegs';
   }
+  if (status?.region) return status.region;
   if (status?.name) return status.name;
   const plan = trip?.plan || [];
-  const erster = plan.find((e) => e.typ === 'ort' && e.name);
-  return erster?.name || 'Zuhause';
+  const erster = plan.find((e) => e.typ === 'ort' && (e.region || e.name));
+  return erster?.region || erster?.name || 'Zuhause';
 }
 
 /**
@@ -99,14 +140,21 @@ export function ortAusStatus(status, trip = null) {
  */
 export function ortFuerSituation(trip, situation) {
   const plan = Array.isArray(trip?.plan) ? trip.plan : [];
-  const ortMitArt = (art) => plan.find((e) => e.typ === 'ort' && e.art === art && e.name)?.name;
+  const label = (ort) => ort?.region || ort?.name || null;
+  const ortMitArt = (art) => {
+    const ort = plan.find((e) => e.typ === 'ort' && e.art === art && (e.region || e.name));
+    return label(ort);
+  };
   const zielNachFahrt = (modus) => {
     for (let i = 0; i < plan.length; i += 1) {
       const eintrag = plan[i];
       if (eintrag.typ !== 'fahrt') continue;
       if (modus && eintrag.modus !== modus) continue;
       const ziel = plan[i + 1];
-      if (ziel?.typ === 'ort' && ziel.name) return ziel.name;
+      if (ziel?.typ === 'ort') {
+        const name = label(ziel);
+        if (name) return name;
+      }
     }
     return null;
   };
@@ -129,7 +177,34 @@ export function ortFuerSituation(trip, situation) {
   if (situation === 'see') {
     return zielNachFahrt('schiff') || ortMitArt('hafen') || 'See';
   }
-  return plan.find((e) => e.typ === 'ort' && e.name)?.name || 'unterwegs';
+  if (situation === 'flug') {
+    return zielNachFahrt('flug') || 'Bangkok';
+  }
+  if (situation === 'flughafen') {
+    return ortMitArt('flughafen') || zielNachFahrt('flug') || 'Flughafen';
+  }
+  if (situation === 'roller') {
+    return zielNachFahrt('roller') || 'Pai';
+  }
+  if (situation === 'bus') {
+    return zielNachFahrt('bus') || zielNachFahrt('auto') || 'unterwegs';
+  }
+  if (situation === 'faehre') {
+    return zielNachFahrt('faehre') || 'Koh Samui';
+  }
+  if (situation === 'auto') {
+    return zielNachFahrt('auto') || zielNachFahrt('taxi') || 'unterwegs';
+  }
+  if (situation === 'strand') {
+    const strand = plan.find((e) => e.typ === 'ort' && e.strand && (e.region || e.name));
+    return label(strand) || 'Strand';
+  }
+  if (situation === 'stadt') {
+    const stadt = plan.find((e) => e.typ === 'ort' && e.art === 'hotel' && !e.strand && (e.region || e.name));
+    return label(stadt) || ortMitArt('hotel') || 'Stadt';
+  }
+  const irgend = plan.find((e) => e.typ === 'ort' && (e.region || e.name));
+  return label(irgend) || 'unterwegs';
 }
 
 /** {n}: Fotozahl oder „ein neuer Gruß“. */
@@ -179,6 +254,17 @@ function einsetzen(vorlage, werte) {
     .replaceAll('{n}', werte.n)
     .replaceAll('{name}', werte.name)
     .replaceAll('{ort}', werte.ort);
+}
+
+function istNachtStatus(status, zeit, zone) {
+  if (Number.isFinite(status?.offsetMinuten)) {
+    const date = zeit instanceof Date ? zeit : new Date(zeit);
+    if (Number.isNaN(date.getTime())) return false;
+    const lokal = new Date(date.getTime() + status.offsetMinuten * 60000);
+    const stunde = lokal.getUTCHours();
+    return stunde >= 21 || stunde < 6;
+  }
+  return istNachtLokal(zeit, zone);
 }
 
 function istNachtLokal(zeit, zone) {

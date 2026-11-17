@@ -12,6 +12,11 @@ const MODUS_NAME = {
   sbahn: 'S-Bahn',
   taxi: 'Taxi',
   schiff: 'Schiff',
+  flug: 'Flugzeug',
+  roller: 'Roller',
+  bus: 'Bus',
+  faehre: 'Fähre',
+  auto: 'Auto',
 };
 
 const ORT_ART_NAME = {
@@ -19,7 +24,12 @@ const ORT_ART_NAME = {
   bahnhof: 'Bahnhof',
   hotel: 'Hotel',
   hafen: 'Hafen',
+  flughafen: 'Flughafen',
+  rollerverleih: 'Rollerverleih',
 };
+
+/** Zeiten für die Familie zuhause immer in deutscher Zeit. */
+const ANZEIGE_ZONE = 'Europe/Berlin';
 
 /**
  * Reise, in deren Zeitraum der Zeitpunkt liegt.
@@ -55,7 +65,7 @@ export function getStatus(trip, zeitpunkt) {
   const plan = Array.isArray(trip?.plan) ? trip.plan : [];
   const fenster = zeitfenster(plan, zone);
   if (fenster.length === 0) {
-    return { status: 'vorReise', ziel: null, restMs: null, titel };
+    return { status: 'vorReise', ziel: null, restMs: null, titel, offsetMinuten: null };
   }
 
   const abfahrt = ersteFahrtAb(plan) || fenster[0].fensterStart;
@@ -65,6 +75,8 @@ export function getStatus(trip, zeitpunkt) {
       ziel: abfahrt,
       restMs: abfahrt.getTime() - zeit.getTime(),
       titel,
+      offsetMinuten: erstesIsoOffset(plan),
+      isoZiel: ersteFahrtIso(plan),
     };
   }
 
@@ -95,12 +107,15 @@ function nachReiseStatus(eintrag, seit, titel) {
   return {
     status: 'nachReise',
     name: eintrag.name || '',
+    region: eintrag.region || '',
     info: eintrag.info || null,
     seit,
     titel,
     lat: eintrag.lat,
     lon: eintrag.lon,
     ortArt: eintrag.art || '',
+    strand: Boolean(eintrag.strand),
+    offsetMinuten: offsetMinutenAusIso(eintrag.von || eintrag.bis),
   };
 }
 
@@ -189,12 +204,13 @@ export function statusBeschreiben(status, trip) {
 
 /**
  * Große Statuszeile für die Karte, dazu Info und Reisetag.
- * Nacht gilt von 21 bis 6 Uhr in der Zeitzone der Reise.
+ * Nacht gilt von 21 bis 6 Uhr Ortszeit der aktuellen Position
+ * (Offset aus den ISO-Zeiten im Plan).
  */
 export function statusKarte(status, trip, eintrag, zeitpunkt) {
   const zone = trip?.zeitzone || 'Europe/Berlin';
   const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
-  const nacht = istNacht(zeit, zone);
+  const nacht = istNachtAnPosition(zeit, status, zone);
   const tag = reisetagStand(
     eintrag,
     zeit,
@@ -227,6 +243,21 @@ export function istNacht(zeitpunkt, zone = 'Europe/Berlin') {
 }
 
 /**
+ * Nacht nach Ortszeit der aktuellen Position.
+ * offsetMinuten kommt aus den ISO-Offsets im Plan (+01:00, +07:00, …).
+ */
+export function istNachtAnPosition(zeitpunkt, status, zone = 'Europe/Berlin') {
+  if (Number.isFinite(status?.offsetMinuten)) {
+    const zeit = alsDatum(zeitpunkt);
+    if (!zeit) return false;
+    const lokal = new Date(zeit.getTime() + status.offsetMinuten * 60000);
+    const stunde = lokal.getUTCHours();
+    return stunde >= 21 || stunde < 6;
+  }
+  return istNacht(zeitpunkt, zone);
+}
+
+/**
  * Reisetag innerhalb von von/bis, beide Tage mitgezählt.
  * Vor der ersten Fahrt (abfahrt) bleibt der Balken bei 0
  * und nennt Datum und Uhrzeit der Abfahrt.
@@ -256,7 +287,7 @@ function abfahrtText(abfahrt, vonIso, zone) {
     ? abfahrt
     : new Date(mitternachtVonIso(vonIso, zone).getTime() + 12 * 60 * 60 * 1000);
   const datum = new Intl.DateTimeFormat('de-DE', {
-    timeZone: zone,
+    timeZone: ANZEIGE_ZONE,
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -264,12 +295,8 @@ function abfahrtText(abfahrt, vonIso, zone) {
   if (!(abfahrt instanceof Date) || Number.isNaN(abfahrt.getTime())) {
     return `Abfahrt am ${datum}`;
   }
-  const uhr = new Intl.DateTimeFormat('de-DE', {
-    timeZone: zone,
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(zeit);
-  return `Abfahrt am ${datum} um ${uhr} Uhr`;
+  const uhr = uhrAnzeige(zeit, zone);
+  return `Abfahrt am ${datum} um ${uhr}`;
 }
 
 /** Punkte einer Fahrt: Ort davor, Wegpunkte, Ort danach. */
@@ -285,15 +312,18 @@ export function tagesUebersicht(trip, eintrag, zeitpunkt) {
   if (!eintrag?.von || !eintrag?.bis) return [];
   const zone = trip?.zeitzone || 'Europe/Berlin';
   const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
-  const heute = tagIso(zeit, zone);
+  const stand = getStatus(trip, zeit);
+  const heute = Number.isFinite(stand?.offsetMinuten)
+    ? tagIsoAusOffset(zeit, stand.offsetMinuten)
+    : tagIso(zeit, ANZEIGE_ZONE);
   const seetagSet = new Set(seetage(trip));
   const fenster = zeitfenster(Array.isArray(trip?.plan) ? trip.plan : [], zone);
   const tage = [];
   let iso = eintrag.von;
   for (let n = 0; n < 400; n += 1) {
     if (iso > eintrag.bis) break;
-    tage.push(tagKarte(iso, heute, seetagSet.has(iso), fenster, zone, trip));
-    const weiter = naechsterKalendertag(iso, zone);
+    tage.push(tagKarte(iso, heute, seetagSet.has(iso), fenster));
+    const weiter = naechsterKalendertag(iso, 'UTC');
     if (weiter.iso <= iso) break;
     iso = weiter.iso;
   }
@@ -303,18 +333,54 @@ export function tagesUebersicht(trip, eintrag, zeitpunkt) {
 /** Name, Land, Zeiten und Info für das Comic-Popup einer Nadel. */
 export function ortPopup(ort, trip) {
   if (!ort) return null;
-  const zone = trip?.zeitzone || 'Europe/Berlin';
   const zeiten = [];
-  if (ort.von) zeiten.push(`Ankunft ${uhrKurz(alsDatum(ort.von), zone)}`);
-  if (ort.bis) zeiten.push(`Abfahrt ${uhrKurz(alsDatum(ort.bis), zone)}`);
+  if (ort.von) zeiten.push(`Ankunft ${uhrAnzeigeVonIso(ort.von)}`);
+  if (ort.bis) zeiten.push(`Abfahrt ${uhrAnzeigeVonIso(ort.bis)}`);
   else if (ort.von && !ort.bis) zeiten.push('Danach zu Hause');
   return {
-    name: ort.name || '',
+    name: ortBeschriftung(ort),
     land: ort.land || '',
     art: ort.art || '',
     zeiten: zeiten.join(' · '),
     info: ort.info || null,
+    liste: null,
   };
+}
+
+/** Popup für eine Regions-Nadel mit mehreren Stationen. */
+export function regionPopup(orte, trip) {
+  const liste = (orte || []).filter(Boolean);
+  if (liste.length === 0) return null;
+  if (liste.length === 1) return ortPopup(liste[0], trip);
+  const region = liste.find((ort) => ort.region)?.region || gemeinsamerOrtsname(liste);
+  const land = liste.find((ort) => ort.land)?.land || '';
+  const sortiert = [...liste].sort((a, b) => {
+    const va = alsDatum(a.von || a.bis)?.getTime() ?? 0;
+    const vb = alsDatum(b.von || b.bis)?.getTime() ?? 0;
+    return va - vb;
+  });
+  return {
+    name: region,
+    land,
+    art: 'region',
+    zeiten: '',
+    info: null,
+    liste: sortiert.map((ort) => {
+      const zeiten = [];
+      if (ort.von) zeiten.push(`Ankunft ${uhrAnzeigeVonIso(ort.von)}`);
+      if (ort.bis) zeiten.push(`Abfahrt ${uhrAnzeigeVonIso(ort.bis)}`);
+      return {
+        titel: ortBeschriftung(ort),
+        zeiten: zeiten.join(' · '),
+        info: ort.info || '',
+      };
+    }),
+  };
+}
+
+function gemeinsamerOrtsname(orte) {
+  const namen = orte.map((ort) => ort.region || ort.name).filter(Boolean);
+  return namen[0] || 'Ort';
 }
 
 /**
@@ -355,16 +421,15 @@ export function streckeTeilen(punkte, anteil) {
   return { gefahren: punkte.slice(), kommend: [] };
 }
 
-function tagKarte(iso, heute, istSeetag, fenster, zone, trip) {
-  const start = mitternachtVonIso(iso, zone);
-  const ende = naechsterKalendertag(iso, zone).start;
-  const mittag = new Date(start.getTime() + 12 * 60 * 60 * 1000);
+function tagKarte(iso, heute, istSeetag, fenster) {
+  const [jahr, monat, tag] = iso.split('-').map(Number);
+  const mittag = new Date(Date.UTC(jahr, monat - 1, tag, 12, 0, 0));
   const wochentag = new Intl.DateTimeFormat('de-DE', {
-    timeZone: zone,
+    timeZone: 'UTC',
     weekday: 'long',
   }).format(mittag);
   const datum = new Intl.DateTimeFormat('de-DE', {
-    timeZone: zone,
+    timeZone: 'UTC',
     day: 'numeric',
     month: 'long',
   }).format(mittag);
@@ -373,92 +438,73 @@ function tagKarte(iso, heute, istSeetag, fenster, zone, trip) {
   if (iso < heute) zustand = 'vergangen';
   else if (iso === heute) zustand = 'heute';
 
-  const abschnitte = fenster.filter((seg) => abschnittAmTag(seg, start, ende));
-  const titel = tagTitel(istSeetag, abschnitte, trip, mittag);
-  const zeilen = tagZeilen(abschnitte, start, ende, zone, istSeetag);
+  const abschnitte = fenster.filter((seg) => abschnittAmKalendertag(seg, iso));
+  const titel = tagTitel(istSeetag, abschnitte);
+  const zeilen = tagZeilen(abschnitte, iso, istSeetag);
 
   return { iso, wochentag, datum, titel, zeilen, zustand, seetag: istSeetag };
 }
 
-function abschnittAmTag(seg, start, ende) {
-  const von = seg.fensterStart;
-  if (!von) return false;
-  const bis = seg.fensterEnde;
-  if (bis && bis <= start) return false;
-  if (von >= ende) return false;
-  return true;
+function abschnittAmKalendertag(seg, iso) {
+  if (seg.typ === 'ort') {
+    const von = lokaleTagIsoAusIso(seg.eintrag.von) || lokaleTagIsoAusIso(seg.eintrag.bis);
+    const bis = lokaleTagIsoAusIso(seg.eintrag.bis) || von;
+    if (!von) return false;
+    return von <= iso && iso <= bis;
+  }
+  const ab = lokaleTagIsoAusIso(seg.eintrag.ab);
+  const an = lokaleTagIsoAusIso(seg.eintrag.an) || ab;
+  if (!ab) return false;
+  // Ankunftstag weglassen, wenn der Zielort denselben Tag beginnt.
+  if (an === iso && ab !== iso && lokaleTagIsoAusIso(seg.nachOrt?.von) === iso) return false;
+  return ab <= iso && iso <= an;
 }
 
-function tagTitel(istSeetag, abschnitte, trip, mittag) {
+function tagTitel(istSeetag, abschnitte) {
   if (istSeetag) return 'Seetag 🌊';
+  if (abschnitte.length === 0) return 'Reisetag';
 
-  // Nachmittag zählt stärker als ein kurzer Hotel-Check-out am Morgen.
-  const nachmittag = new Date(mittag.getTime() + 3 * 60 * 60 * 1000);
-  const spaetTitel = titelAusStatus(getStatus(trip, nachmittag));
-  if (spaetTitel) return spaetTitel;
+  const erstes = abschnitte[0];
+  let start = '';
+  if (erstes.typ === 'ort') start = regionVon(erstes.eintrag);
+  else start = regionVon(erstes.nachOrt) || regionVon(erstes.vonOrt);
 
-  const mittagTitel = titelAusStatus(getStatus(trip, mittag));
-  if (mittagTitel) return mittagTitel;
+  const letztes = abschnitte[abschnitte.length - 1];
+  let ende = '';
+  if (letztes.typ === 'fahrt') ende = regionVon(letztes.nachOrt);
+  else ende = regionVon(letztes.eintrag);
 
-  let bester = null;
-  let besteDauer = -1;
-  const tagStart = mittag.getTime() - 12 * 60 * 60 * 1000;
-  const tagEnde = mittag.getTime() + 12 * 60 * 60 * 1000;
-  for (const seg of abschnitte) {
-    if (seg.typ !== 'ort') continue;
-    const von = Math.max(seg.fensterStart?.getTime() || tagStart, tagStart);
-    const bis = Math.min(seg.fensterEnde?.getTime() || tagEnde, tagEnde);
-    const dauer = Math.max(0, bis - von);
-    const prio = { hotel: 5, hafen: 4, zuhause: 3, bahnhof: 1 }[seg.eintrag.art] || 2;
-    const score = dauer + prio * 2 * 3600000;
-    if (score > besteDauer) {
-      besteDauer = score;
-      bester = seg.eintrag.name;
-    }
-  }
-  if (bester) return bester;
-  const fahrt = abschnitte.find((seg) => seg.typ === 'fahrt');
-  if (fahrt?.nachOrt?.name) return `Unterwegs nach ${fahrt.nachOrt.name}`;
-  if (fahrt?.eintrag?.name) return fahrt.eintrag.name;
-  return 'Reisetag';
+  const flug = abschnitte.some((seg) => seg.typ === 'fahrt' && seg.eintrag.modus === 'flug');
+  if (!start && !ende) return 'Reisetag';
+  if (!ende || start === ende) return start || ende;
+  return flug ? `${start} → ${ende} ✈️` : `${start} → ${ende}`;
 }
 
-function titelAusStatus(status) {
-  if (status?.status === 'ort' && status.name) return status.name;
-  if (status?.status === 'fahrt') {
-    if (status.modus === 'schiff') return 'Seetag 🌊';
-    if (status.nach?.name) return `Unterwegs nach ${status.nach.name}`;
-    return status.name || 'Unterwegs';
-  }
-  return null;
-}
-
-function tagZeilen(abschnitte, start, ende, zone, istSeetag) {
+function tagZeilen(abschnitte, iso, istSeetag) {
   const zeilen = [];
   const gesehen = new Set();
   for (const seg of abschnitte) {
     if (seg.typ === 'ort') {
       const ort = seg.eintrag;
-      const uhr = uhrenAmTag(seg.originalStart, seg.originalEnde, start, ende, zone);
-      if (uhr) zeilen.push({ uhr, text: ort.name || 'Ort' });
-      else zeilen.push({ uhr: '', text: ort.name || 'Ort' });
-      if (ort.info && !gesehen.has(ort.info)) {
+      const uhr = uhrenFuerOrt(seg, iso);
+      zeilen.push({ de: uhr.de, ort: uhr.ort, text: ortZeileTag(ort, uhr.ganzerTag) });
+      const ankunftHeute = lokaleTagIsoAusIso(ort.von) === iso || (!ort.von && lokaleTagIsoAusIso(ort.bis) === iso);
+      if (ort.info && ankunftHeute && !gesehen.has(ort.info)) {
         gesehen.add(ort.info);
-        zeilen.push({ uhr: '', text: ort.info });
+        zeilen.push({ de: '', ort: '', text: ort.info, info: true });
       }
     } else {
       const fahrt = seg.eintrag;
-      const name = fahrtName(fahrt);
-      const uhr = uhrenAmTag(seg.originalStart, seg.originalEnde, start, ende, zone);
-      zeilen.push({ uhr, text: name });
+      const uhr = uhrenFuerFahrt(seg, iso);
+      zeilen.push({ de: uhr.de, ort: uhr.ort, text: fahrtName(fahrt) });
       if (fahrt.info && !gesehen.has(fahrt.info)) {
         gesehen.add(fahrt.info);
-        zeilen.push({ uhr: '', text: fahrt.info });
+        zeilen.push({ de: '', ort: '', text: fahrt.info, info: true });
       } else if (istSeetag && fahrt.modus === 'schiff' && !fahrt.info) {
         const text = 'Auf See';
         if (!gesehen.has(text)) {
           gesehen.add(text);
-          zeilen.push({ uhr: '', text });
+          zeilen.push({ de: '', ort: '', text, info: true });
         }
       }
     }
@@ -471,18 +517,156 @@ function fahrtName(fahrt) {
   if (fahrt.modus === 'zug') return fahrt.name || 'Zug';
   if (fahrt.modus === 'sbahn') return fahrt.name || 'S-Bahn';
   if (fahrt.modus === 'taxi') return fahrt.name || 'Taxi';
+  if (fahrt.modus === 'flug') return fahrt.name || 'Flug';
+  if (fahrt.modus === 'roller') return fahrt.name || 'Roller';
+  if (fahrt.modus === 'bus') return fahrt.name || 'Bus';
+  if (fahrt.modus === 'faehre') return fahrt.name || 'Fähre';
+  if (fahrt.modus === 'auto') return fahrt.name || 'Auto';
   return fahrt.name || 'Fahrt';
 }
 
-function uhrenAmTag(von, bis, start, ende, zone) {
-  const teile = [];
-  if (von && von >= start && von < ende) teile.push(uhrKurz(von, zone).replace(' Uhr', ''));
-  if (bis && bis > start && bis <= ende) teile.push(uhrKurz(bis, zone).replace(' Uhr', ''));
-  // Ganz im Tag liegende Spanne: von–bis; nur Start oder nur Ende sonst.
-  if (teile.length === 2) return `${teile[0]}–${teile[1]}`;
-  if (teile.length === 1) return teile[0];
-  if (von && bis && von < start && bis > ende) return 'ganzer Tag';
+function regionVon(ort) {
+  if (!ort) return '';
+  return ort.region || ort.name || '';
+}
+
+function hotelName(name) {
+  return String(name || '').replace(/^Hotel\s+/i, '');
+}
+
+function ortBeschriftung(ort) {
+  const name = ort?.name || '';
+  const art = ort?.art || '';
+  if (art === 'hotel') return `🏨 Hotel: ${hotelName(name)}`;
+  if (art === 'flughafen') return `✈️ Flughafen ${kuerzeOrt(name)}`;
+  if (art === 'bahnhof') return `🚉 ${name}`;
+  if (art === 'hafen') return `⚓ ${name}`;
+  if (art === 'rollerverleih') return `🛵 ${name}`;
+  if (art === 'zuhause') return `🏠 ${name}`;
+  return name;
+}
+
+function ortZeileTag(ort, ganzerTag) {
+  if (ort.art === 'hotel') {
+    const name = hotelName(ort.name);
+    return ganzerTag ? `🏨 Hotel ${name} – ganzer Tag` : `🏨 Hotel: ${name}`;
+  }
+  return ortBeschriftung(ort);
+}
+
+function uhrenFuerOrt(seg, iso) {
+  const vonIso = seg.eintrag.von;
+  const bisIso = seg.eintrag.bis;
+  const vonTag = lokaleTagIsoAusIso(vonIso);
+  const bisTag = lokaleTagIsoAusIso(bisIso);
+  const ankunftHeute = vonTag === iso;
+  const abfahrtHeute = bisTag === iso;
+  const ganzerTag = Boolean(vonTag && bisTag && vonTag < iso && iso < bisTag);
+  if (ganzerTag) return { de: 'ganzer Tag', ort: '', ganzerTag: true };
+
+  const deTeile = [];
+  const ortTeile = [];
+  if (ankunftHeute && seg.originalStart) {
+    const paar = uhrPaar(seg.originalStart, vonIso);
+    deTeile.push(paar.de);
+    ortTeile.push(paar.ort);
+  }
+  if (abfahrtHeute && seg.originalEnde) {
+    const paar = uhrPaar(seg.originalEnde, bisIso);
+    deTeile.push(paar.de);
+    ortTeile.push(paar.ort);
+  }
+  if (deTeile.length === 2) {
+    return {
+      de: `${deTeile[0]} → ${deTeile[1]}`,
+      ort: ortszeitText(ortTeile[0], ortTeile[1], null),
+      ganzerTag: false,
+    };
+  }
+  if (deTeile.length === 1) {
+    return {
+      de: deTeile[0],
+      ort: ortTeile[0] ? `Ortszeit ${ortTeile[0]}` : '',
+      ganzerTag: false,
+    };
+  }
+  return { de: '', ort: '', ganzerTag: false };
+}
+
+function uhrenFuerFahrt(seg, iso) {
+  const ab = seg.originalStart;
+  const an = seg.originalEnde;
+  const abTag = lokaleTagIsoAusIso(seg.eintrag.ab);
+  const anTag = lokaleTagIsoAusIso(seg.eintrag.an);
+  if (abTag && anTag && abTag < iso && iso < anTag) {
+    return { de: 'ganzer Tag', ort: '' };
+  }
+  if (!ab) return { de: '', ort: '' };
+  const abPaar = uhrPaar(ab, seg.eintrag.ab);
+  if (!an) return { de: abPaar.de, ort: abPaar.ort ? `Ortszeit ${abPaar.ort}` : '' };
+  const anPaar = uhrPaar(an, seg.eintrag.an);
+  if (anTag === iso && abTag !== iso) {
+    return {
+      de: anPaar.de,
+      ort: anPaar.ort ? (regionVon(seg.nachOrt) ? `Ortszeit ${regionVon(seg.nachOrt)} ${anPaar.ort}` : `Ortszeit ${anPaar.ort}`) : '',
+    };
+  }
+  return {
+    de: `${abPaar.de} → ${anPaar.de}`,
+    ort: ortszeitFahrt(abPaar, anPaar, seg.nachOrt),
+  };
+}
+
+function uhrPaar(date, iso) {
+  const de = uhrHHMM(date, offsetMs(date, ANZEIGE_ZONE) / 60000);
+  const off = offsetMinutenAusIso(iso);
+  if (off == null || offsetIstDeutsch(date, off)) return { de, ort: null };
+  return { de, ort: uhrHHMM(date, off) };
+}
+
+function ortszeitFahrt(abPaar, anPaar, nachOrt) {
+  if (!abPaar.ort && !anPaar.ort) return '';
+  if (!abPaar.ort && anPaar.ort) {
+    const wo = regionVon(nachOrt);
+    return wo ? `Ortszeit ${wo} ${anPaar.ort}` : `Ortszeit ${anPaar.ort}`;
+  }
+  if (abPaar.ort && anPaar.ort) return `Ortszeit ${abPaar.ort} → ${anPaar.ort}`;
+  if (abPaar.ort) return `Ortszeit ${abPaar.ort}`;
   return '';
+}
+
+function ortszeitText(a, b, wo) {
+  if (!a && !b) return '';
+  if (a && b) return wo ? `Ortszeit ${wo} ${a} → ${b}` : `Ortszeit ${a} → ${b}`;
+  const wert = a || b;
+  return wo ? `Ortszeit ${wo} ${wert}` : `Ortszeit ${wert}`;
+}
+
+function uhrHHMM(date, offsetMin) {
+  const lokal = new Date(date.getTime() + offsetMin * 60000);
+  const stunde = String(lokal.getUTCHours()).padStart(2, '0');
+  const minute = String(lokal.getUTCMinutes()).padStart(2, '0');
+  return `${stunde}:${minute}`;
+}
+
+function offsetIstDeutsch(date, offsetMin) {
+  const deutsch = offsetMs(date, ANZEIGE_ZONE) / 60000;
+  return Math.round(offsetMin) === Math.round(deutsch);
+}
+
+function lokaleTagIsoAusIso(iso) {
+  const date = alsDatum(iso);
+  if (!date) return null;
+  const off = offsetMinutenAusIso(iso);
+  if (off == null) return tagIso(date, ANZEIGE_ZONE);
+  return tagIsoAusOffset(date, off);
+}
+
+function tagIsoAusOffset(date, offsetMin) {
+  const lokal = new Date(date.getTime() + offsetMin * 60000);
+  const monat = String(lokal.getUTCMonth() + 1).padStart(2, '0');
+  const tag = String(lokal.getUTCDate()).padStart(2, '0');
+  return `${lokal.getUTCFullYear()}-${monat}-${tag}`;
 }
 
 function countdownZeile(status, zone = 'Europe/Berlin') {
@@ -490,9 +674,9 @@ function countdownZeile(status, zone = 'Europe/Berlin') {
   const restMs = Math.max(0, status.restMs);
   const ziel = status.ziel;
   const jetzt = new Date(ziel.getTime() - restMs);
-  const heute = tagIso(jetzt, zone);
-  const abfahrtTag = tagIso(ziel, zone);
-  const uhr = uhrKurz(ziel, zone);
+  const heute = tagIso(jetzt, ANZEIGE_ZONE);
+  const abfahrtTag = tagIso(ziel, ANZEIGE_ZONE);
+  const uhr = uhrAnzeigeVonIso(status.isoZiel) || uhrAnzeige(ziel, zone);
   if (heute < abfahrtTag) {
     const tage = tageZwischen(heute, abfahrtTag);
     if (tage > 1) return `🧳 Noch ${tage} Tage bis zur Abfahrt!`;
@@ -507,10 +691,22 @@ function countdownZeile(status, zone = 'Europe/Berlin') {
 }
 
 function ortZeile(status, zeit, zone) {
-  const uhr = status.bis ? uhrKurz(status.bis, zone) : null;
-  const heute = status.bis && tagIso(zeit, zone) === tagIso(status.bis, zone);
+  const uhr = status.isoBis ? uhrAnzeigeVonIso(status.isoBis) : (status.bis ? uhrAnzeige(status.bis, zone) : null);
+  const heute = status.bis && tagIsoAusOffset(
+    zeit,
+    Number.isFinite(status.offsetMinuten) ? status.offsetMinuten : offsetMs(zeit, ANZEIGE_ZONE) / 60000,
+  ) === (status.isoBis ? lokaleTagIsoAusIso(status.isoBis) : tagIso(status.bis, ANZEIGE_ZONE));
+  if (status.strand) {
+    return `🏖️ In ${status.region || strandOrt(status.name)} am Strand`;
+  }
+  if (status.ortArt === 'flughafen') {
+    return `🛬 Am Flughafen ${status.region || kuerzeOrt(status.name)}`;
+  }
+  if (status.ortArt === 'rollerverleih') {
+    return `🛵 Am Rollerverleih ${status.name}`;
+  }
   if (status.ortArt === 'hotel') {
-    const name = String(status.name || '').replace(/^Hotel\s+/i, '');
+    const name = hotelName(status.name);
     return `🛏️ Im Hotel ${name}`;
   }
   if (status.ortArt === 'hafen') {
@@ -532,12 +728,33 @@ function ortZeile(status, zeit, zone) {
 }
 
 function fahrtZeile(status, zone) {
-  const ankunft = status.an ? uhrKurz(status.an, zone) : null;
+  const ankunft = status.isoAn
+    ? uhrAnzeigeVonIso(status.isoAn)
+    : (status.an ? uhrAnzeige(status.an, zone) : null);
+  const ziel = fahrtZiel(status);
   if (status.modus === 'schiff') {
     let zeile = '🌊 Auf See';
-    if (status.nach?.name) zeile += ` – unterwegs nach ${status.nach.name}`;
+    if (ziel) zeile += ` – unterwegs nach ${ziel}`;
     if (status.restMs > 0) zeile += `, ${restKurz(status.restMs)}`;
     return zeile;
+  }
+  if (status.modus === 'flug') {
+    let zeile = ziel ? `✈️ Im Flugzeug nach ${ziel}` : '✈️ Im Flugzeug';
+    if (status.restMs > 0) zeile += ` – Landung in ${restFlug(status.restMs)}`;
+    return zeile;
+  }
+  if (status.modus === 'roller') {
+    return ziel ? `🛵 Mit dem Roller unterwegs nach ${ziel}` : '🛵 Mit dem Roller unterwegs';
+  }
+  if (status.modus === 'bus') {
+    return ziel ? `🚌 Mit dem Bus unterwegs nach ${ziel}` : '🚌 Im Bus';
+  }
+  if (status.modus === 'faehre') {
+    return ziel ? `⛴️ Auf der Fähre nach ${ziel}` : '⛴️ Auf der Fähre';
+  }
+  if (status.modus === 'auto') {
+    const name = status.name || 'Mit dem Auto';
+    return ankunft ? `🚗 ${name} – Ankunft ${ankunft}` : `🚗 ${name}`;
   }
   if (status.modus === 'zug') {
     const erstes = String(status.name || '').split(' ')[0];
@@ -554,6 +771,44 @@ function fahrtZeile(status, zone) {
   return status.name || 'Unterwegs';
 }
 
+function fahrtZiel(status) {
+  if (status?.nach?.region) return status.nach.region;
+  const ausName = String(status?.name || '').match(/\bnach\s+(.+)$/i);
+  if (ausName) return ausName[1].trim();
+  return kuerzeOrt(status?.nach?.name || '');
+}
+
+function kuerzeOrt(name) {
+  let text = String(name || '').trim();
+  text = text.replace(/^Flughafen\s+/i, '');
+  const klammer = text.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if (klammer) {
+    const innen = klammer[2].trim();
+    const aussen = klammer[1].trim();
+    if (/^koh\b/i.test(innen) || innen.length <= aussen.length) return innen;
+    return aussen;
+  }
+  return text;
+}
+
+function strandOrt(name) {
+  const text = String(name || '');
+  const bekannt = text.match(/Ao Nang|Koh Samui|Railay|Phuket|Pai|Bangkok|Chiang Mai/i);
+  if (bekannt) {
+    if (/samui/i.test(bekannt[0]) && !/^koh/i.test(bekannt[0])) return 'Koh Samui';
+    return bekannt[0];
+  }
+  if (/samui/i.test(text)) return 'Koh Samui';
+  return kuerzeOrt(text.replace(/^Hotel\s+/i, ''));
+}
+
+function restFlug(ms) {
+  const minuten = Math.max(1, Math.round(ms / 60000));
+  if (minuten < 60) return `${minuten} Min.`;
+  const stunden = Math.max(1, Math.round(ms / 3600000));
+  return stunden === 1 ? '1 Std.' : `${stunden} Std.`;
+}
+
 function restKurz(ms) {
   const minuten = Math.max(1, Math.round(ms / 60000));
   if (minuten < 60) return `noch ca. ${minuten} Min.`;
@@ -568,6 +823,29 @@ function uhrKurz(date, zone) {
     minute: '2-digit',
   }).format(date);
   return `${text} Uhr`;
+}
+
+function uhrNur(date, zone) {
+  return uhrKurz(date, zone).replace(' Uhr', '');
+}
+
+/** Deutsche Zeit, bei abweichender Reisezone mit Ortszeit. */
+function uhrAnzeige(date, zone) {
+  if (!date) return '';
+  const deutsch = uhrKurz(date, ANZEIGE_ZONE);
+  if (!zone || zone === ANZEIGE_ZONE) return deutsch;
+  const ort = uhrNur(date, zone);
+  const d = deutsch.replace(' Uhr', '');
+  if (d === ort) return deutsch;
+  return `${deutsch} (Ortszeit ${ort})`;
+}
+
+function uhrAnzeigeVonIso(iso) {
+  const date = alsDatum(iso);
+  if (!date) return '';
+  const paar = uhrPaar(date, iso);
+  if (!paar.ort) return `${paar.de} Uhr`;
+  return `${paar.de} Uhr (Ortszeit ${paar.ort})`;
 }
 
 function tageZwischen(vonIso, bisIso) {
@@ -618,6 +896,11 @@ function ortStatus(seg, plan) {
     seit: seg.originalStart,
     bis: seg.originalEnde,
     danach: danachInfo(plan, seg.index),
+    strand: Boolean(ort.strand),
+    region: ort.region || '',
+    isoVon: ort.von || null,
+    isoBis: ort.bis || null,
+    offsetMinuten: offsetMinutenMischen(ort.von, ort.bis, 0),
   };
 }
 
@@ -649,6 +932,9 @@ function fahrtStatus(seg, zeit, seetag) {
     position: lage ? { lat: lage.lat, lon: lage.lon } : null,
     richtung: lage ? lage.richtung : 'rechts',
     seetag,
+    isoAb: fahrt.ab || null,
+    isoAn: fahrt.an || null,
+    offsetMinuten: offsetMinutenMischen(fahrt.ab, fahrt.an, fortschritt),
   };
 }
 
@@ -672,6 +958,8 @@ function ortKurz(ort) {
   return {
     name: ort.name || '',
     art: ort.art || '',
+    land: ort.land || '',
+    region: ort.region || '',
     lat: ort.lat,
     lon: ort.lon,
   };
@@ -741,7 +1029,52 @@ function routenpunkte(seg) {
   if (seg.nachOrt && Number.isFinite(seg.nachOrt.lat) && Number.isFinite(seg.nachOrt.lon)) {
     punkte.push({ lat: seg.nachOrt.lat, lon: seg.nachOrt.lon });
   }
+  if (seg.eintrag?.modus === 'flug') return grosskreisKette(punkte);
   return punkte;
+}
+
+/** Flugroute als Kette von Großkreis-Bögen statt gerader Linien. */
+function grosskreisKette(punkte) {
+  if (punkte.length < 2) return punkte;
+  const kette = [punkte[0]];
+  for (let i = 0; i < punkte.length - 1; i += 1) {
+    const bogen = grosskreisPunkte(punkte[i], punkte[i + 1]);
+    kette.push(...bogen.slice(1));
+  }
+  return kette;
+}
+
+function grosskreisPunkte(a, b) {
+  const meter = distanzMeter(a, b);
+  const n = Math.max(8, Math.min(48, Math.round(meter / 120000)));
+  const punkte = [];
+  for (let i = 0; i <= n; i += 1) {
+    punkte.push(grosskreisPunkt(a, b, i / n));
+  }
+  return punkte;
+}
+
+function grosskreisPunkt(a, b, t) {
+  const lat1 = a.lat * Math.PI / 180;
+  const lon1 = a.lon * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const lon2 = b.lon * Math.PI / 180;
+  const d = 2 * Math.asin(Math.min(1, Math.sqrt(
+    Math.sin((lat2 - lat1) / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2,
+  )));
+  if (d < 1e-9) {
+    return { lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t };
+  }
+  const u = Math.sin((1 - t) * d) / Math.sin(d);
+  const v = Math.sin(t * d) / Math.sin(d);
+  const x = u * Math.cos(lat1) * Math.cos(lon1) + v * Math.cos(lat2) * Math.cos(lon2);
+  const y = u * Math.cos(lat1) * Math.sin(lon1) + v * Math.cos(lat2) * Math.sin(lon2);
+  const z = u * Math.sin(lat1) + v * Math.sin(lat2);
+  return {
+    lat: Math.atan2(z, Math.sqrt(x * x + y * y)) * 180 / Math.PI,
+    lon: Math.atan2(y, x) * 180 / Math.PI,
+  };
 }
 
 /** Zeitanteil 0..1 wird zur Strecke: gleich viel Zeit heißt gleich viel Weg. */
@@ -938,10 +1271,47 @@ function undListe(teile) {
 }
 
 function mitModus(modus) {
-  const name = MODUS_NAME[modus];
   if (modus === 'sbahn') return 'der S-Bahn';
+  if (modus === 'faehre') return 'der Fähre';
+  const name = MODUS_NAME[modus];
   if (name) return `dem ${name}`;
   return 'dem Fahrzeug';
+}
+
+function offsetMinutenAusIso(iso) {
+  if (typeof iso !== 'string') return null;
+  const text = iso.trim();
+  if (/Z$/i.test(text)) return 0;
+  const m = text.match(/([+-])(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const vz = m[1] === '-' ? -1 : 1;
+  return vz * (Number(m[2]) * 60 + Number(m[3]));
+}
+
+function offsetMinutenMischen(isoA, isoB, anteil = 0) {
+  const a = offsetMinutenAusIso(isoA);
+  const b = offsetMinutenAusIso(isoB);
+  if (a == null && b == null) return null;
+  if (a == null) return b;
+  if (b == null) return a;
+  const t = Number.isFinite(anteil) ? Math.min(1, Math.max(0, anteil)) : 0;
+  return a + (b - a) * t;
+}
+
+function erstesIsoOffset(plan) {
+  for (const eintrag of plan || []) {
+    const iso = eintrag.von || eintrag.ab || eintrag.bis || eintrag.an;
+    const offset = offsetMinutenAusIso(iso);
+    if (offset != null) return offset;
+  }
+  return null;
+}
+
+function ersteFahrtIso(plan) {
+  for (const eintrag of plan || []) {
+    if (eintrag?.typ === 'fahrt' && eintrag.ab) return eintrag.ab;
+  }
+  return null;
 }
 
 function prozentText(anteil) {

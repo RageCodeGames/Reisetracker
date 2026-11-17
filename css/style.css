@@ -474,6 +474,30 @@ button:disabled {
   border-radius: 0.75rem;
 }
 
+.karten-zoom {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.karten-zoom-knopf {
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #1a1208;
+  background: #fff8ee;
+  border: 3px solid #1a1208;
+  border-radius: 0.65rem;
+  cursor: pointer;
+}
+
 .reise-karte {
   display: block;
   width: 100%;
@@ -506,8 +530,71 @@ button:disabled {
 
 .land-sand { fill: #f2d48a; }
 .land-gruen { fill: #b7d98a; }
+.land-fein-fuell { fill: #cfe6a4; }
 .reise-karte.nacht .land-sand { fill: #6d6144; }
 .reise-karte.nacht .land-gruen { fill: #4e6844; }
+.reise-karte.nacht .land-fein-fuell { fill: #4e6844; }
+
+.land-grenze {
+  fill: none;
+  stroke: #3a2a1a;
+  stroke-width: 1.8px;
+  stroke-dasharray: 6 5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.karten-landname {
+  font-family: "Fredoka", "Segoe UI", sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  fill: #3a2a1a;
+  fill-opacity: 0.28;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.karten-meername {
+  font-family: "Fredoka", "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 500;
+  fill: #0a5c68;
+  fill-opacity: 0.55;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.reise-karte.nacht .karten-meername {
+  fill: #b7e6ee;
+  fill-opacity: 0.45;
+}
+
+.karten-stadt-punkt {
+  fill: #1a1208;
+  stroke: #fffdf8;
+  stroke-width: 1.3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.karten-stadt-name {
+  font-family: "Fredoka", "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  fill: #1a1208;
+  text-anchor: start;
+  pointer-events: none;
+}
+
+.reise-karte.nacht .karten-stadt-name,
+.reise-karte.nacht .karten-landname {
+  fill: #fff8ee;
+}
 
 .route {
   fill: none;
@@ -520,7 +607,13 @@ button:disabled {
 .route-schiff { stroke: #1d4e8f; }
 .route-zug { stroke: #d21f1f; }
 .route-grau { stroke: #4b5563; }
+.route-flug { stroke: #c5c9ce; stroke-dasharray: 7 8; }
+.route-roller { stroke: #e07a2f; }
+.route-bus { stroke: #2f9e4f; }
+.route-faehre { stroke: #2a6fdb; }
+.route-auto { stroke: #6b7280; }
 .route-kommend { stroke-dasharray: 9 8; }
+.route-flug.route-kommend { stroke-dasharray: 7 8; }
 
 .nadel-kopf {
   fill: #fffdf8;
@@ -569,6 +662,58 @@ button:disabled {
 .sbahn-huelle { fill: #5c6b7a; stroke: #1a1208; stroke-width: 2.5; }
 .strom { fill: none; stroke: #1a1208; stroke-width: 2; }
 .auto { fill: #f6d34d; stroke: #1a1208; stroke-width: 2.5; stroke-linejoin: round; }
+.taxi-schild { fill: #f6d34d; stroke: #1a1208; stroke-width: 1.6; }
+.pkw-huelle { fill: #c9d4de; stroke: #1a1208; stroke-width: 2.5; stroke-linejoin: round; }
+
+.flug-rumpf, .flug-fluegel, .flug-leit, .mini-flug {
+  fill: #fffdf8;
+  stroke: #1a1208;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.kondens {
+  fill: none;
+  stroke: #e8eef2;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-dasharray: 5 4;
+}
+.flug-licht { display: none; }
+.reise-karte.nacht .flug-licht { display: block; }
+.flug-licht-rot { fill: #d21f1f; stroke: #1a1208; stroke-width: 1; animation: flug-blink 1s step-end infinite; }
+.flug-licht-gruen { fill: #1f7a3a; stroke: #1a1208; stroke-width: 1; animation: flug-blink 1s step-end infinite; animation-delay: 0.5s; }
+.flug-licht-weiss { fill: #fff8ee; stroke: #1a1208; stroke-width: 1; animation: flug-blink 0.7s step-end infinite; }
+
+.roller-tritt, .roller-lenker, .mini-roller {
+  fill: none;
+  stroke: #1a1208;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.roller-sitz { fill: #e07a2f; stroke: #1a1208; stroke-width: 2; }
+.helm { fill: #3d7ea6; stroke: #1a1208; stroke-width: 1.6; }
+.helm-visier { fill: none; stroke: #1a1208; stroke-width: 1.6; stroke-linecap: round; }
+.roller-wackeln {
+  transform-origin: 0px 10px;
+  animation: roller-wackeln 0.55s ease-in-out infinite;
+}
+
+.bus-huelle { fill: #3cb56a; stroke: #1a1208; stroke-width: 2.4; }
+.bus-front { fill: #2f9e4f; stroke: #1a1208; stroke-width: 1.8; }
+.bus-licht { fill: #ffe14a; stroke: #1a1208; stroke-width: 1.2; }
+
+.faehre-rumpf { fill: #5aa4d4; stroke: #1a1208; stroke-width: 2.4; stroke-linejoin: round; }
+.faehre-deck { fill: #fffdf8; stroke: #1a1208; stroke-width: 2; }
+.faehre-koerper {
+  transform-origin: 0px 8px;
+  animation: schaukeln 3.2s ease-in-out infinite;
+}
+
+.stamm { fill: none; stroke: #8a5a2b; stroke-width: 3; stroke-linecap: round; }
+.blatt { fill: none; stroke: #1f7a3a; stroke-width: 3; stroke-linecap: round; }
+.liege { fill: #f2d48a; stroke: #1a1208; stroke-width: 2; stroke-linejoin: round; }
+.liege-bein { fill: none; stroke: #1a1208; stroke-width: 2; stroke-linecap: round; }
 .haut { fill: #f3c7a1; stroke: #1a1208; stroke-width: 2; }
 .kleid { fill: #3d7ea6; stroke: #1a1208; stroke-width: 2; stroke-linejoin: round; }
 .bein { fill: none; stroke: #1a1208; stroke-width: 2; stroke-linecap: round; }
@@ -675,25 +820,49 @@ button:disabled {
 
 .tag-zeilen li {
   display: grid;
-  grid-template-columns: 7.75rem 1fr;
-  gap: 0.35rem 0.55rem;
-  margin: 0 0 0.35rem;
+  grid-template-columns: 7em 1fr;
+  column-gap: 0.55rem;
+  align-items: start;
+  margin: 0 0 0.4rem;
   font-size: 18px;
 }
 
-.tag-zeilen .ohne-uhr {
-  grid-template-columns: 1fr;
+.tag-uhr {
+  min-width: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.tag-uhr-de {
+  display: block;
+  overflow-wrap: break-word;
+}
+
+.tag-uhr-ort {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.78em;
+  font-weight: 500;
   color: #3a2a1a;
 }
 
-.tag-karte.vergangen .tag-zeilen .ohne-uhr {
+.tag-karte.vergangen .tag-uhr-ort {
   color: #5c5348;
 }
 
-.tag-uhr {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+.tag-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tag-zeilen .tag-info .tag-text {
+  color: #3a2a1a;
+  font-weight: 400;
+}
+
+.tag-karte.vergangen .tag-info .tag-text {
+  color: #5c5348;
 }
 
 .gruss-galerie {
@@ -860,6 +1029,37 @@ button:disabled {
   margin-bottom: 0;
 }
 
+.ort-popup-liste {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ort-popup-liste li {
+  margin: 0 0 0.65rem;
+  padding: 0.55rem 0.6rem;
+  background: #fff8e0;
+  border: 2px solid #1a1208;
+  border-radius: 0.7rem;
+  font-size: 18px;
+}
+
+.ort-popup-liste li:last-child {
+  margin-bottom: 0;
+}
+
+.ort-popup-liste strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.ort-popup-liste-zeiten,
+.ort-popup-liste-info {
+  display: block;
+  margin-top: 0.15rem;
+  color: #3a2a1a;
+}
+
 .gruss-vollbild {
   flex-direction: column;
   width: min(36rem, 100vw);
@@ -946,6 +1146,16 @@ button:disabled {
   50% { transform: rotate(-5deg); }
 }
 
+@keyframes roller-wackeln {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(4deg); }
+}
+
+@keyframes flug-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.15; }
+}
+
 @keyframes rauch-steigen {
   0% { transform: translate(0, 2px); opacity: 0; }
   25% { opacity: 0.85; }
@@ -966,6 +1176,11 @@ button:disabled {
 @media (prefers-reduced-motion: reduce) {
   .wellen-schleier,
   .auf-see .schiff-koerper,
+  .faehre-koerper,
+  .roller-wackeln,
+  .flug-licht-rot,
+  .flug-licht-gruen,
+  .flug-licht-weiss,
   .rauch circle,
   .moewe-1,
   .moewe-2,
