@@ -14,6 +14,7 @@ import {
 import {
   aktiveReise,
   getStatus,
+  flugPopup,
   ortPopup,
   regionPopup,
   statusKarte,
@@ -56,6 +57,7 @@ const titel = document.querySelector('#reise-titel');
 const untertitel = document.querySelector('#reise-untertitel');
 const statusZeile = document.querySelector('#status-zeile');
 const statusInfo = document.querySelector('#status-info');
+const flugLive = document.querySelector('#flug-live');
 const reiseBalken = document.querySelector('#reise-balken');
 const reiseFuellung = document.querySelector('#reise-balken-fuellung');
 const reiseText = document.querySelector('#reise-balken-text');
@@ -76,6 +78,8 @@ const ortName = document.querySelector('#ort-popup-name');
 const ortLand = document.querySelector('#ort-popup-land');
 const ortZeiten = document.querySelector('#ort-popup-zeiten');
 const ortInfo = document.querySelector('#ort-popup-info');
+const ortFlug = document.querySelector('#ort-popup-flug');
+const ortFlugLink = document.querySelector('#ort-popup-flug-link');
 const ortListe = document.querySelector('#ort-popup-liste');
 const merkenHinweis = document.querySelector('#merken-hinweis');
 const pushKasten = document.querySelector('#push-kasten');
@@ -299,6 +303,15 @@ async function zeichne() {
     statusInfo.hidden = true;
     statusInfo.textContent = '';
   }
+  if (kartenText.flugLive?.url) {
+    flugLive.hidden = false;
+    flugLive.href = kartenText.flugLive.url;
+    flugLive.textContent = kartenText.flugLive.knopf;
+  } else {
+    flugLive.hidden = true;
+    flugLive.removeAttribute('href');
+    flugLive.textContent = '';
+  }
   if (kartenText.reisetag) {
     reiseBalken.hidden = false;
     const anteil = kartenText.reisetag.gesamt
@@ -325,6 +338,7 @@ async function zeichne() {
       const modul = await import('./map.js');
       karte = await modul.karteErstellen(karteRahmen);
       karte.setzeOrtKlick((ziel) => ortPopupZeigen(ziel));
+      karte.setzeFahrzeugKlick((stand) => flugPopupZeigen(stand));
       karte.setzeGrussKlick((gruss) => vollbildOeffnen(gruss, updates));
       karteLaeuft = false;
     }
@@ -381,6 +395,17 @@ function tageZeichnen(tage, nachTag) {
       const text = document.createElement('span');
       text.className = 'tag-text';
       text.textContent = zeile.text;
+      if (zeile.flugUrl) {
+        text.append(' ');
+        const link = document.createElement('a');
+        link.className = 'tag-flug-link';
+        link.href = zeile.flugUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = '📡';
+        link.setAttribute('aria-label', 'Flug live verfolgen');
+        text.append(link);
+      }
       li.append(uhr, text);
       liste.append(li);
     }
@@ -632,11 +657,21 @@ function gesehenSchreiben() {
   }
 }
 
+function flugPopupZeigen(stand) {
+  const daten = flugPopup(stand);
+  if (!daten) return;
+  popupFuellen(daten);
+}
+
 function ortPopupZeigen(ziel) {
   const daten = Array.isArray(ziel)
     ? regionPopup(ziel, zustand?.trip)
     : ortPopup(ziel, zustand?.trip);
   if (!daten) return;
+  popupFuellen(daten);
+}
+
+function popupFuellen(daten) {
   ortName.textContent = daten.name || 'Ort';
   if (daten.land) {
     ortLand.hidden = false;
@@ -658,6 +693,15 @@ function ortPopupZeigen(ziel) {
   } else {
     ortInfo.hidden = true;
     ortInfo.textContent = '';
+  }
+  if (daten.flug?.url) {
+    ortFlug.hidden = false;
+    ortFlugLink.href = daten.flug.url;
+    ortFlugLink.textContent = daten.flug.knopf;
+  } else {
+    ortFlug.hidden = true;
+    ortFlugLink.removeAttribute('href');
+    ortFlugLink.textContent = '';
   }
   ortListe.replaceChildren();
   if (daten.liste?.length) {

@@ -216,6 +216,30 @@ button:disabled {
   margin-bottom: 0.7rem;
 }
 
+.flug-live-knopf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 3.4rem;
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+  color: #1a1208;
+  background: #ffe14a;
+  border: 3px solid #1a1208;
+  border-radius: 0.9rem;
+  box-sizing: border-box;
+}
+
+.flug-live-knopf[hidden] {
+  display: none;
+}
+
 .reise-balken {
   position: relative;
   height: 2.3rem;
@@ -604,16 +628,20 @@ button:disabled {
   vector-effect: non-scaling-stroke;
 }
 
-.route-schiff { stroke: #1d4e8f; }
-.route-zug { stroke: #d21f1f; }
-.route-grau { stroke: #4b5563; }
-.route-flug { stroke: #c5c9ce; stroke-dasharray: 7 8; }
-.route-roller { stroke: #e07a2f; }
-.route-bus { stroke: #2f9e4f; }
-.route-faehre { stroke: #2a6fdb; }
-.route-auto { stroke: #6b7280; }
-.route-kommend { stroke-dasharray: 9 8; }
-.route-flug.route-kommend { stroke-dasharray: 7 8; }
+.route-fertig { stroke: #1f4fa3; }
+.route-spaeter {
+  stroke: #b0b6bf;
+  stroke-dasharray: 9 8;
+}
+.route-jetzt {
+  stroke: #ff8a00;
+  stroke-width: 7px;
+}
+.route-jetzt-gefahren { stroke-dasharray: none; }
+.route-jetzt-kommend {
+  stroke-dasharray: 10 8;
+  animation: route-laufen 1.4s linear infinite;
+}
 
 .nadel-kopf {
   fill: #fffdf8;
@@ -856,6 +884,14 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.tag-flug-link {
+  display: inline;
+  margin-left: 0.15rem;
+  font-size: 1.05em;
+  text-decoration: none;
+  color: inherit;
+}
+
 .tag-zeilen .tag-info .tag-text {
   color: #3a2a1a;
   font-weight: 400;
@@ -1029,6 +1065,26 @@ button:disabled {
   margin-bottom: 0;
 }
 
+.ort-popup-flug {
+  margin: 0.7rem 0 0;
+}
+
+.ort-popup-flug a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.2rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  color: #1a1208;
+  background: #ffe14a;
+  border: 3px solid #1a1208;
+  border-radius: 0.8rem;
+}
+
 .ort-popup-liste {
   margin: 0.55rem 0 0;
   padding: 0;
@@ -1151,6 +1207,10 @@ button:disabled {
   50% { transform: rotate(4deg); }
 }
 
+@keyframes route-laufen {
+  to { stroke-dashoffset: -18; }
+}
+
 @keyframes flug-blink {
   0%, 49% { opacity: 1; }
   50%, 100% { opacity: 0.15; }
@@ -1185,7 +1245,8 @@ button:disabled {
   .moewe-1,
   .moewe-2,
   .fluegel-links,
-  .fluegel-rechts {
+  .fluegel-rechts,
+  .route-jetzt-kommend {
     animation: none;
   }
 }

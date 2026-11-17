@@ -184,6 +184,7 @@ export async function karteErstellen(container) {
   let animationsRahmen = 0;
   let angepasst = false;
   let ortKlick = null;
+  let fahrzeugKlick = null;
   let grussKlick = null;
   let grussDaten = { updates: [], neuester: null, neuIds: new Set(), fotoUrl: null };
   let blaseEingeklappt = false;
@@ -695,10 +696,16 @@ export async function karteErstellen(container) {
       const danach = plan[i + 1]?.typ === 'ort' ? plan[i + 1] : null;
       const punkte = fahrtPunkte(davor, eintrag, danach);
       const anteil = anteilDerFahrt(eintrag, zeit, status);
-      const teile = streckeTeilen(punkte, anteil);
-      const klasse = routenKlasse(eintrag.modus);
-      linie(teile.gefahren, `${klasse} route-gefahren`);
-      linie(teile.kommend, `${klasse} route-kommend`);
+      const zustand = fahrtRoutenZustand(eintrag, anteil, status);
+      if (zustand === 'fertig') {
+        linie(punkte, 'route route-fertig');
+      } else if (zustand === 'spaeter') {
+        linie(punkte, 'route route-spaeter');
+      } else {
+        const teile = streckeTeilen(punkte, anteil);
+        linie(teile.gefahren, 'route route-jetzt route-jetzt-gefahren');
+        linie(teile.kommend, 'route route-jetzt route-jetzt-kommend');
+      }
     }
   }
 
@@ -815,6 +822,16 @@ export async function karteErstellen(container) {
     else if (art === 'auto') autoZeichnen(flip);
     else if (art === 'strand') strandLeuteZeichnen(skala, schlaeft());
     else leuteZeichnen(skala, schlaeft());
+
+    if (art === 'flug' && status?.flugnummer) {
+      innen.style('cursor', 'pointer')
+        .attr('role', 'button')
+        .attr('tabindex', 0)
+        .on('click', (ereignis) => {
+          ereignis.sourceEvent?.stopPropagation();
+          fahrzeugKlick?.(status);
+        });
+    }
   }
 
   function zielPunkt() {
@@ -903,6 +920,10 @@ export async function karteErstellen(container) {
 
   function setzeOrtKlick(fn) {
     ortKlick = typeof fn === 'function' ? fn : null;
+  }
+
+  function setzeFahrzeugKlick(fn) {
+    fahrzeugKlick = typeof fn === 'function' ? fn : null;
   }
 
   function setzeGrussKlick(fn) {
@@ -1151,8 +1172,27 @@ export async function karteErstellen(container) {
     const hier = zielPunkt();
     const pos = hier ? xy(hier.lat, hier.lon) : null;
     if (!pos) return;
-    const k = 5;
+    // Unterwegs weiter heraus (ca. 300–500 km), sonst nah (ca. 50–80 km).
+    const radiusKm = status?.status === 'fahrt' ? 400 : 65;
+    const zielK = zoomFuerRadiusKm(hier.lat, hier.lon, radiusKm);
+    // Nie herauszoomen: näher behalten, nur verschieben.
+    const k = Math.max(transform.k || 1, zielK);
     sanft(zoomIdentity.translate(breite / 2 - pos.x * k, hoehe / 2 - 30 - pos.y * k).scale(k));
+  }
+
+  /** Zoomstufe, damit etwa radiusKm um den Punkt in den Kartenrahmen passt. */
+  function zoomFuerRadiusKm(lat, lon, radiusKm) {
+    const dLat = radiusKm / 111;
+    const cos = Math.cos((lat * Math.PI) / 180);
+    const dLon = radiusKm / (111 * Math.max(0.2, Math.abs(cos)));
+    const a = projektion([lon - dLon, lat - dLat]);
+    const b = projektion([lon + dLon, lat + dLat]);
+    if (!a || !b || Number.isNaN(a[0]) || Number.isNaN(b[0])) return 5;
+    const w = Math.max(16, Math.abs(b[0] - a[0]));
+    const h = Math.max(16, Math.abs(b[1] - a[1]));
+    const pad = 36;
+    const k = 0.92 * Math.min((breite - pad * 2) / w, (hoehe - pad * 2) / h);
+    return Math.max(1, Math.min(ZOOM_MAX, k));
   }
 
   function zoomPlus() {
@@ -1188,6 +1228,7 @@ export async function karteErstellen(container) {
     zoomPlus,
     zoomMinus,
     setzeOrtKlick,
+    setzeFahrzeugKlick,
     setzeGrussKlick,
     zerstoeren,
   };
@@ -1252,15 +1293,15 @@ function ortBesucht(ort, zeit) {
   return !Number.isNaN(bis) && zeit.getTime() >= bis;
 }
 
-function routenKlasse(modus) {
-  if (modus === 'schiff') return 'route route-schiff';
-  if (modus === 'zug') return 'route route-zug';
-  if (modus === 'flug') return 'route route-flug';
-  if (modus === 'roller') return 'route route-roller';
-  if (modus === 'bus') return 'route route-bus';
-  if (modus === 'faehre') return 'route route-faehre';
-  if (modus === 'auto') return 'route route-auto';
-  return 'route route-grau';
+/** Route nach Zeitstatus: fertig / aktuell / später – nicht nach Verkehrsmittel. */
+function fahrtRoutenZustand(fahrt, anteil, status) {
+  const ab = new Date(fahrt.ab).getTime();
+  if (status?.status === 'fahrt' && status.ab instanceof Date && status.ab.getTime() === ab) {
+    return 'aktuell';
+  }
+  if (anteil >= 1) return 'fertig';
+  if (anteil <= 0) return 'spaeter';
+  return 'aktuell';
 }
 
 function nadelSymbol(innen, ort, besucht, aktuell, anzeigeName, regionNadel = false) {

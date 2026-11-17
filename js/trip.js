@@ -231,7 +231,76 @@ export function statusKarte(status, trip, eintrag, zeitpunkt) {
     zeile = fahrtZeile(status, zone);
   }
 
-  return { zeile, info, reisetag: tag, nacht };
+  return {
+    zeile,
+    info,
+    reisetag: tag,
+    nacht,
+    flugLive: flugLiveLink(status, trip, zeit),
+  };
+}
+
+/**
+ * Flightradar24-Link während des Flugs und in den 3 Stunden vor Abflug.
+ * Nach der Landung null.
+ */
+export function flugLiveLink(status, trip, zeitpunkt) {
+  const zeit = alsDatum(zeitpunkt) ?? new Date(zeitpunkt);
+  if (!zeit) return null;
+  const t = zeit.getTime();
+  const dreiStunden = 3 * 60 * 60 * 1000;
+
+  if (status?.status === 'fahrt' && status.modus === 'flug' && status.flugnummer) {
+    const an = status.an instanceof Date ? status.an.getTime() : NaN;
+    if (!Number.isNaN(an) && t >= an) return null;
+    return flugLinkDaten(status.flugnummer);
+  }
+
+  for (const eintrag of trip?.plan || []) {
+    if (eintrag.typ !== 'fahrt' || eintrag.modus !== 'flug' || !eintrag.flugnummer) continue;
+    const ab = alsDatum(eintrag.ab);
+    const an = alsDatum(eintrag.an);
+    if (!ab) continue;
+    if (an && t >= an.getTime()) continue;
+    if (t >= ab.getTime()) return flugLinkDaten(eintrag.flugnummer);
+    if (ab.getTime() - t <= dreiStunden) return flugLinkDaten(eintrag.flugnummer);
+  }
+  return null;
+}
+
+/** Popup-Inhalt beim Antippen des Flugzeugs. */
+export function flugPopup(status) {
+  if (!status?.flugnummer || status.modus !== 'flug') return null;
+  const flug = flugLinkDaten(status.flugnummer);
+  if (!flug) return null;
+  const ziel = status.nach?.region || status.nach?.name || '';
+  return {
+    name: `✈️ Flug ${flug.nummer}`,
+    land: ziel ? `nach ${ziel}` : '',
+    art: 'flug',
+    zeiten: status.isoAn ? `Landung ${uhrAnzeigeVonIso(status.isoAn)}` : '',
+    info: status.info || null,
+    liste: null,
+    flug,
+  };
+}
+
+export function flugLinkDaten(nummer) {
+  const roh = String(nummer || '').trim();
+  if (!roh) return null;
+  const slug = roh.toLowerCase().replace(/\s+/g, '');
+  const anzeige = flugNummerLesbar(roh);
+  return {
+    nummer: anzeige,
+    url: `https://www.flightradar24.com/data/flights/${slug}`,
+    knopf: `📡 Flug ${anzeige} live verfolgen`,
+  };
+}
+
+function flugNummerLesbar(nummer) {
+  const m = String(nummer).trim().match(/^([A-Za-z]+)\s*(\d+)$/);
+  if (m) return `${m[1].toUpperCase()} ${m[2]}`;
+  return String(nummer).trim().toUpperCase();
 }
 
 /** true zwischen 21 und 6 Uhr in der angegebenen Zeitzone. */
@@ -496,7 +565,15 @@ function tagZeilen(abschnitte, iso, istSeetag) {
     } else {
       const fahrt = seg.eintrag;
       const uhr = uhrenFuerFahrt(seg, iso);
-      zeilen.push({ de: uhr.de, ort: uhr.ort, text: fahrtName(fahrt) });
+      const flug = fahrt.modus === 'flug' && fahrt.flugnummer
+        ? flugLinkDaten(fahrt.flugnummer)
+        : null;
+      zeilen.push({
+        de: uhr.de,
+        ort: uhr.ort,
+        text: fahrtName(fahrt),
+        flugUrl: flug?.url || null,
+      });
       if (fahrt.info && !gesehen.has(fahrt.info)) {
         gesehen.add(fahrt.info);
         zeilen.push({ de: '', ort: '', text: fahrt.info, info: true });
@@ -517,7 +594,11 @@ function fahrtName(fahrt) {
   if (fahrt.modus === 'zug') return fahrt.name || 'Zug';
   if (fahrt.modus === 'sbahn') return fahrt.name || 'S-Bahn';
   if (fahrt.modus === 'taxi') return fahrt.name || 'Taxi';
-  if (fahrt.modus === 'flug') return fahrt.name || 'Flug';
+  if (fahrt.modus === 'flug') {
+    const name = fahrt.name || 'Flug';
+    if (!fahrt.flugnummer) return name;
+    return `${name} · ${flugNummerLesbar(fahrt.flugnummer)}`;
+  }
   if (fahrt.modus === 'roller') return fahrt.name || 'Roller';
   if (fahrt.modus === 'bus') return fahrt.name || 'Bus';
   if (fahrt.modus === 'faehre') return fahrt.name || 'Fähre';
@@ -923,6 +1004,7 @@ function fahrtStatus(seg, zeit, seetag) {
     modus: fahrt.modus,
     name: fahrt.name || '',
     info: fahrt.info || null,
+    flugnummer: fahrt.flugnummer || null,
     von: ortKurz(seg.vonOrt),
     nach: ortKurz(seg.nachOrt),
     ab: start,
